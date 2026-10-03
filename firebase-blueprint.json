@@ -1,0 +1,37 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "email": { "type": "string", "format": "email" },
+        "onboardingComplete": { "type": "boolean", "description": "Whether the user has completed onboarding" }
+      },
+      "required": ["uid", "email"]
+    },
+    "Goal": {
+      "title": "Goal",
+      "description": "A user goal or plan",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "completed"] }
+      },
+      "required": ["id", "userId", "title"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "users/{userId}/goals/{goalId}": {
+      "schema": "Goal",
+      "description": "User goals"
+    }
+  }
+}

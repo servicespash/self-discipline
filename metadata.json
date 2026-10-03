@@ -1,0 +1,6 @@
+{
+  "name": "SelfDiscipline Consultant",
+  "description": "An interactive room makeover and life management application to foster self-discipline.",
+  "requestFramePermissions": ["geolocation", "camera", "notifications"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
