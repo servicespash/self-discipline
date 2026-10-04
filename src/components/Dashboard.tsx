@@ -37,8 +37,6 @@ const stopFocusTone = () => {
 };
 
 // Internal Components
-import RamaFloatingHub from './RamaFloatingHub';
-import LockdownOverlay from './LockdownOverlay';
 import TaskWidget from './TaskWidget';
 import CalendarWidget from './CalendarWidget';
 
@@ -630,8 +628,6 @@ export default function Dashboard({ accessToken }: { accessToken: string | null 
         </div>
       </main>
 
-      {isFocusing && <LockdownOverlay onTerminate={toggleFocusLockdown} />}
-      <RamaFloatingHub context={ramaContextPayload} />
     </div>
   );
 }

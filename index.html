@@ -1,18 +1,32 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <script>
+      window.onerror = function(msg, url, line, col, error) {
+        var el = document.getElementById('loading-marker');
+        if (el) {
+          el.style.color = '#ef4444';
+          el.style.borderColor = '#ef4444';
+          el.innerText = 'FATAL_ERROR: ' + msg + ' (Line: ' + line + ')';
+        }
+        return false;
+      };
+    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>My Google AI Studio App</title>
-    <meta name="description" content="An application built with Google AI Studio." />
-    <meta property="og:title" content="My Google AI Studio App" />
-    <meta property="og:description" content="An application built with Google AI Studio." />
+    <title>Cymatic Discipline OS</title>
+    <meta name="description" content="Unified system orchestrator for high-performance architectural discipline and resonance." />
+    <meta property="og:title" content="Cymatic Discipline OS" />
+    <meta property="og:description" content="Unified system orchestrator for high-performance architectural discipline and resonance." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
   </head>
-  <body>
+  <body class="bg-gray-950 text-gray-100" style="background-color: #030712; margin: 0; padding: 0; overflow: hidden;">
+    <div id="loading-marker" style="position:fixed; top:20px; left:20px; font-family:monospace; font-size:12px; color:#10b981; z-index:9999; background: rgba(0,0,0,0.8); padding: 8px 12px; border: 1px solid #10b981; border-radius: 4px; pointer-events: none; letter-spacing: 0.1em;">
+      SYSM_RES_ACTIVE_V3
+    </div>
     <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <script type="module" crossorigin src="/src/main.tsx"></script>
   </body>
 </html>
 

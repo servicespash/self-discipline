@@ -6,7 +6,7 @@
 
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import App from './App.tsx';
+import App from './App';
 import './index.css';
 import { ShieldAlert, RefreshCw } from 'lucide-react';
 
@@ -72,6 +72,7 @@ class SystemErrorBoundary extends Component<Props, State> {
 }
 
 const rootElement = document.getElementById('root');
+console.log('[System] Initializing React root...', { rootElement });
 if (!rootElement) throw new Error('Failed to locate root DOM node.');
 
 createRoot(rootElement).render(

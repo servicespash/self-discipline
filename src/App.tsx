@@ -151,7 +151,7 @@ const AppContent: React.FC = () => {
       <LockdownOverlay />
 
       {/* Global AI Floating Execution Hub */}
-      <RamaFloatingHub context="Cymatic Hub & Cymatic Resonance Unified Shell" />
+      <RamaFloatingHub context="Cymatic Hub & Resonance Universal Shell" />
     </div>
   );
 };
