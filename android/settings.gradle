@@ -1,0 +1,2 @@
+rootProject.name = 'cymatic-discipline-os'
+include ':app'

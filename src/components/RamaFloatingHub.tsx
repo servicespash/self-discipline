@@ -1,9 +1,9 @@
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
- * RamaFloatingHub - High-Performance AI Execution Tutor, Context Aware & Memory Vault
- * Enhanced with Chat Context Management System, Rolling Interaction Awareness,
- * and Multi-Format Summary Exports (PDF, Clipboard, Email, File, External Links).
+ * RamaFloatingHub - High-Performance AI Execution Tutor & Memory Vault
+ * Powered by ConversationManager: Persistent chat history, periodic summary engine,
+ * continuous user identity & multi-session awareness, and complete export menu.
  */
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
@@ -37,16 +37,18 @@ import {
   Calendar,
   Layers,
   ChevronRight,
+  ChevronDown,
   ShieldCheck,
-  Printer
+  Printer,
+  Sparkle
 } from 'lucide-react';
 import { DisciplineBridge, SystemLockdownPayload } from '../DisciplineBridge';
 import { LocalUserSession } from '../types/session';
 import {
-  ChatContextManager,
+  ConversationManager,
   ChatSession,
   Message
-} from '../utils/chatContextManager';
+} from '../utils/ConversationManager';
 import { exportSummaryAsPdf } from '../utils/pdfExport';
 
 interface RamaProps {
@@ -90,19 +92,19 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
   const [showShareModal, setShowShareModal] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Context Management State
+  // Context Management State via ConversationManager
   const [sessions, setSessions] = useState<ChatSession[]>(() => {
-    return ChatContextManager.loadSessions(userMoniker);
+    return ConversationManager.loadSessions(userMoniker);
   });
   const [activeSessionId, setActiveSessionId] = useState<string>(() => {
-    return ChatContextManager.getActiveSessionId(sessions);
+    return ConversationManager.getActiveSessionId(sessions);
   });
 
-  // Rolling Summary (Cumulative interaction memory)
-  const [rollingSummary, setRollingSummary] = useState<string>(() => {
-    return ChatContextManager.loadRollingSummary();
+  // Rolling Summary & Ongoing Conversation Context
+  const [conversationContext, setConversationContext] = useState<string>(() => {
+    return ConversationManager.getConversationContext();
   });
-  const [isUpdatingRollingSummary, setIsUpdatingRollingSummary] = useState(false);
+  const [isPeriodicEngineRunning, setIsPeriodicEngineRunning] = useState(false);
 
   // Active Session Resolution
   const activeSession = useMemo(() => {
@@ -250,20 +252,18 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
     };
   }, [userMoniker, userEmail, lockdownState, context]);
 
-  // Window Controls
-  const handleClose = (e?: React.MouseEvent) => {
+  // Window Controls - explicit stopPropagation to prevent any drag interference
+  const handleClose = (e?: React.MouseEvent | React.TouchEvent) => {
     if (e) {
       e.stopPropagation();
-      e.preventDefault();
     }
     setIsOpen(false);
     if (onClose) onClose();
   };
 
-  const handleToggleMinimize = (e?: React.MouseEvent) => {
+  const handleToggleMinimize = (e?: React.MouseEvent | React.TouchEvent) => {
     if (e) {
       e.stopPropagation();
-      e.preventDefault();
     }
     setIsMinimized((prev) => !prev);
   };
@@ -271,14 +271,14 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
   // Switch to another session
   const handleSelectSession = (sessionId: string) => {
     setActiveSessionId(sessionId);
-    ChatContextManager.setActiveSessionId(sessionId);
+    ConversationManager.setActiveSessionId(sessionId);
     setActiveTab('chat');
     showToast('Session loaded');
   };
 
   // Start new chat session
   const handleCreateNewSession = () => {
-    const { sessions: updated, newSession } = ChatContextManager.createNewSession(
+    const { sessions: updated, newSession } = ConversationManager.createNewSession(
       userMoniker,
       sessions
     );
@@ -293,7 +293,7 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
     if (e) e.stopPropagation();
     if (!window.confirm('Delete this consultation session?')) return;
 
-    const { sessions: updated, nextActiveId } = ChatContextManager.deleteSession(
+    const { sessions: updated, nextActiveId } = ConversationManager.deleteSession(
       sessionId,
       sessions,
       userMoniker
@@ -302,6 +302,40 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
     setActiveSessionId(nextActiveId);
     showToast('Session deleted');
   };
+
+  // Check and run periodic summary engine in the background
+  const triggerPeriodicSummaryCheck = useCallback(
+    async (currentSess: ChatSession, allSessions: ChatSession[]) => {
+      if (!ConversationManager.shouldTriggerPeriodicSummary(currentSess)) {
+        return;
+      }
+
+      setIsPeriodicEngineRunning(true);
+      try {
+        const userContext = getSystemSnapshot();
+        const result = await ConversationManager.generatePeriodicContext(
+          allSessions,
+          currentSess,
+          userContext
+        );
+
+        setConversationContext(result.conversationContext);
+
+        // Update the session's summary and last count
+        const updated = ConversationManager.updateSessionSummary(
+          currentSess.id,
+          result.sessionSummary,
+          allSessions
+        );
+        setSessions(updated);
+      } catch (err) {
+        console.warn('[Rama] Periodic summary engine error:', err);
+      } finally {
+        setIsPeriodicEngineRunning(false);
+      }
+    },
+    [getSystemSnapshot]
+  );
 
   // Chat message submission with full Context Awareness & Memory
   const handleSendMessage = async (textToSend?: string) => {
@@ -316,7 +350,7 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
     };
 
     const newMessages = [...messages, userMsg];
-    const updatedSessions = ChatContextManager.updateSessionMessages(
+    const updatedSessions = ConversationManager.updateSessionMessages(
       activeSessionId,
       newMessages,
       sessions
@@ -329,7 +363,7 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
     setErrorMessage('');
 
     const userContext = getSystemSnapshot();
-    const pastSessionsContext = ChatContextManager.generatePastSessionsOverview(
+    const pastSessionsContext = ConversationManager.generatePastSessionsOverview(
       sessions,
       activeSessionId
     );
@@ -345,7 +379,7 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
           })),
           userContext,
           memory: memories,
-          rollingSummary,
+          rollingSummary: conversationContext,
           pastSessionsContext
         })
       });
@@ -363,12 +397,19 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
       };
 
       const finalMessages = [...newMessages, assistantMsg];
-      const finalizedSessions = ChatContextManager.updateSessionMessages(
+      const finalizedSessions = ConversationManager.updateSessionMessages(
         activeSessionId,
         finalMessages,
         updatedSessions
       );
       setSessions(finalizedSessions);
+
+      // Check if periodic summary should trigger after this exchange
+      const updatedCurrentSession = finalizedSessions.find((s) => s.id === activeSessionId) || {
+        ...activeSession,
+        messages: finalMessages
+      };
+      triggerPeriodicSummaryCheck(updatedCurrentSession, finalizedSessions);
     } catch (err: any) {
       console.error('[Rama] Chat Error:', err);
       setIsError(true);
@@ -428,8 +469,8 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
       const generated = data.summary || data.message || 'Summary ready.';
       setSummaryText(generated);
 
-      // Attach summary to session
-      const updated = ChatContextManager.updateSessionSummary(
+      // Attach summary to session via ConversationManager
+      const updated = ConversationManager.updateSessionSummary(
         sessionToSummarize.id,
         generated,
         sessions
@@ -462,7 +503,7 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
 `.trim();
       setSummaryText(fallback);
 
-      const updated = ChatContextManager.updateSessionSummary(
+      const updated = ConversationManager.updateSessionSummary(
         sessionToSummarize.id,
         fallback,
         sessions
@@ -473,47 +514,32 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
     }
   };
 
-  // Re-synthesize rolling cumulative interaction awareness
-  const handleUpdateRollingSummary = async () => {
-    setIsUpdatingRollingSummary(true);
+  // Re-synthesize continuous conversation context manually
+  const handleUpdateConversationContext = async () => {
+    setIsPeriodicEngineRunning(true);
     showToast('Re-synthesizing AI continuous awareness...');
 
     const userContext = getSystemSnapshot();
-    const allExchanges = sessions.flatMap((s) => s.messages);
-
     try {
-      const res = await fetch('/api/chat/summary', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: allExchanges.slice(-20).map((m) => ({
-            role: m.role,
-            parts: [{ text: m.text }]
-          })),
-          userContext,
-          memory: memories,
-          previousSummary: rollingSummary,
-          mode: 'rolling'
-        })
-      });
-
-      if (!res.ok) throw new Error('Rolling summary error');
-      const data = await res.json();
-      const updatedSummary = data.summary || rollingSummary;
-      setRollingSummary(updatedSummary);
-      ChatContextManager.saveRollingSummary(updatedSummary);
-      showToast('AI awareness updated across all sessions');
+      const result = await ConversationManager.generatePeriodicContext(
+        sessions,
+        activeSession,
+        userContext
+      );
+      setConversationContext(result.conversationContext);
+      showToast('AI conversation context updated across all sessions');
     } catch (err) {
-      console.error('[Rama] Rolling summary error:', err);
+      console.error('[Rama] Conversation context error:', err);
       showToast('Awareness update fallback retained');
     } finally {
-      setIsUpdatingRollingSummary(false);
+      setIsPeriodicEngineRunning(false);
     }
   };
 
   // Export Summary: Clipboard
   const handleExportSummaryClipboard = async () => {
-    const success = await ChatContextManager.exportToClipboard(summaryText);
+    const textToCopy = summaryText || conversationContext;
+    const success = await ConversationManager.exportToClipboard(textToCopy);
     if (success) {
       showToast('Summary copied to clipboard');
     } else {
@@ -523,7 +549,8 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
 
   // Export Summary: Email
   const handleExportSummaryEmail = () => {
-    ChatContextManager.exportToEmail(summaryText, userMoniker);
+    const textToSend = summaryText || conversationContext;
+    ConversationManager.exportToEmail(textToSend, userMoniker);
     showToast('Opening email client...');
   };
 
@@ -532,7 +559,7 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
     try {
       exportSummaryAsPdf({
         title: `Rama Executive Briefing // ${activeSession.title}`,
-        summaryText: summaryText || 'No summary text available.',
+        summaryText: summaryText || conversationContext || 'No summary text available.',
         userMoniker,
         userEmail,
         lockdownActive: lockdownState.active
@@ -549,7 +576,7 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
     const dateStr = new Date().toISOString().split('T')[0];
     const filename = `Cymatic_Rama_Briefing_${dateStr}.${format}`;
     const mime = format === 'md' ? 'text/markdown;charset=utf-8' : 'text/plain;charset=utf-8';
-    ChatContextManager.exportToFile(summaryText, filename, mime);
+    ConversationManager.exportToFile(summaryText || conversationContext, filename, mime);
     showToast(`Saved ${filename}`);
   };
 
@@ -609,7 +636,7 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
       txt: 'text/plain;charset=utf-8',
       json: 'application/json;charset=utf-8'
     };
-    ChatContextManager.exportToFile(
+    ConversationManager.exportToFile(
       content,
       `Cymatic_Rama_Chat_${dateStr}.${format}`,
       mimeMap[format]
@@ -620,15 +647,15 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
   // WhatsApp Share
   const handleShareToWhatsApp = (text?: string) => {
     setShowExportMenu(false);
-    const shareContent = text || summaryText || getFullChatText('txt').slice(0, 1800);
-    const url = ChatContextManager.getWhatsAppShareUrl(shareContent);
+    const shareContent = text || summaryText || conversationContext || getFullChatText('txt').slice(0, 1800);
+    const url = ConversationManager.getWhatsAppShareUrl(shareContent);
     window.open(url, '_blank');
   };
 
   // Native Web Share or Modal Fallback
   const handleNativeShare = async (text?: string, title?: string) => {
     setShowExportMenu(false);
-    const content = text || summaryText || getFullChatText('txt').slice(0, 1500);
+    const content = text || summaryText || conversationContext || getFullChatText('txt').slice(0, 1500);
     const shareTitle = title || `Cymatic OS - Rama Briefing for ${userMoniker}`;
 
     if (navigator.share) {
@@ -636,7 +663,7 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
         await navigator.share({
           title: shareTitle,
           text: content,
-          url: ChatContextManager.getShareableLink(activeSessionId)
+          url: ConversationManager.getShareableLink(activeSessionId)
         });
         showToast('Shared successfully');
       } catch (err: any) {
@@ -652,8 +679,8 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
   // Share deep-link URL
   const handleCopyShareableLink = async () => {
     setShowExportMenu(false);
-    const link = ChatContextManager.getShareableLink(activeSessionId);
-    const success = await ChatContextManager.exportToClipboard(link);
+    const link = ConversationManager.getShareableLink(activeSessionId);
+    const success = await ConversationManager.exportToClipboard(link);
     if (success) {
       showToast('App link copied to clipboard');
     } else {
@@ -670,51 +697,55 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
     return (
       <Draggable nodeRef={nodeRef as any} handle=".min-handle" cancel=".no-drag" bounds="body">
         <div ref={nodeRef} className="fixed bottom-6 right-6 z-[120]">
-          <div className="min-handle cursor-grab active:cursor-grabbing bg-gray-950/95 backdrop-blur-2xl border border-emerald-500/40 rounded-full px-4 py-2.5 shadow-2xl flex items-center gap-3 animate-in zoom-in-95 select-none hover:border-emerald-400/70 transition-all">
-            <GripHorizontal size={14} className="text-gray-600 shrink-0" />
+          <div className="bg-gray-950/95 backdrop-blur-2xl border border-emerald-500/40 rounded-full px-4 py-2.5 shadow-2xl flex items-center gap-3 animate-in zoom-in-95 select-none hover:border-emerald-400/70 transition-all">
+            {/* Draggable Grip Portion */}
+            <div className="min-handle flex items-center gap-2 cursor-grab active:cursor-grabbing">
+              <GripHorizontal size={14} className="text-gray-600 shrink-0 pointer-events-none" />
 
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <div className="p-1.5 bg-emerald-500/10 rounded-full border border-emerald-500/30">
-                  <BotMessageSquare size={16} className="text-emerald-400" />
+              <div className="flex items-center gap-2 pointer-events-none">
+                <div className="relative">
+                  <div className="p-1.5 bg-emerald-500/10 rounded-full border border-emerald-500/30">
+                    <BotMessageSquare size={16} className="text-emerald-400" />
+                  </div>
+                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400" />
                 </div>
-                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400" />
-              </div>
 
-              <div className="text-left">
-                <div className="text-xs font-black text-white flex items-center gap-1.5 leading-none">
-                  Rama AI
-                  <span className="text-[9px] font-mono text-emerald-400 bg-emerald-950/80 px-1.5 py-0.5 rounded border border-emerald-500/30">
-                    {lockdownState.active ? 'LOCKED' : 'ONLINE'}
+                <div className="text-left">
+                  <div className="text-xs font-black text-white flex items-center gap-1.5 leading-none">
+                    Rama AI
+                    <span className="text-[9px] font-mono text-emerald-400 bg-emerald-950/80 px-1.5 py-0.5 rounded border border-emerald-500/30">
+                      {lockdownState.active ? 'LOCKED' : 'ONLINE'}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-gray-400 font-medium leading-none block mt-1 truncate max-w-[130px]">
+                    {activeSession.title}
                   </span>
                 </div>
-                <span className="text-[10px] text-gray-400 font-medium leading-none block mt-1 truncate max-w-[130px]">
-                  {activeSession.title}
-                </span>
               </div>
             </div>
 
-            <div className="flex items-center gap-1 ml-2 border-l border-gray-800 pl-2">
+            {/* Window Controls (Outside Draggable Handle) */}
+            <div
+              className="no-drag flex items-center gap-1 ml-2 border-l border-gray-800 pl-2 cursor-default"
+              onMouseDown={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+            >
               <button
                 type="button"
                 onClick={handleToggleMinimize}
-                onMouseDown={(e) => e.stopPropagation()}
-                onTouchStart={(e) => e.stopPropagation()}
                 title="Expand Rama AI Hub"
-                className="no-drag p-1.5 text-gray-400 hover:text-emerald-400 hover:bg-gray-900 rounded-lg transition-colors"
+                className="p-1.5 text-gray-400 hover:text-emerald-400 hover:bg-gray-900 rounded-lg transition-colors cursor-pointer"
               >
-                <Maximize2 size={15} />
+                <Maximize2 size={15} className="pointer-events-none" />
               </button>
               <button
                 type="button"
                 onClick={handleClose}
-                onMouseDown={(e) => e.stopPropagation()}
-                onTouchStart={(e) => e.stopPropagation()}
                 title="Close Rama AI Hub"
-                className="no-drag p-1.5 text-gray-500 hover:text-red-400 hover:bg-gray-900 rounded-lg transition-colors"
+                className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-gray-900 rounded-lg transition-colors cursor-pointer"
               >
-                <X size={15} />
+                <X size={15} className="pointer-events-none" />
               </button>
             </div>
           </div>
@@ -729,19 +760,20 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
   return (
     <Draggable nodeRef={nodeRef as any} handle=".handle" cancel=".no-drag" bounds="body">
       <div ref={nodeRef} className="fixed bottom-4 sm:bottom-6 right-2 sm:right-6 z-[120]">
-        <div className="w-[95vw] sm:w-[460px] h-[84vh] sm:h-[550px] bg-gray-950/98 backdrop-blur-3xl border border-emerald-500/30 rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className="w-[95vw] sm:w-[480px] h-[85vh] sm:h-[570px] bg-gray-950/98 backdrop-blur-3xl border border-emerald-500/30 rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
 
-          {/* HEADER: Draggable Handle */}
-          <div className="handle p-3 sm:p-3.5 bg-gray-900/90 border-b border-gray-800/80 cursor-grab active:cursor-grabbing flex items-center justify-between select-none">
-            <div className="flex items-center gap-2">
-              <GripHorizontal size={16} className="text-gray-600 shrink-0" />
-              <div className="p-1.5 bg-emerald-500/10 rounded-lg border border-emerald-500/20 shrink-0">
+          {/* HEADER: Split into Draggable Grip Area + Non-Draggable Controls */}
+          <div className="p-3 sm:p-3.5 bg-gray-900/90 border-b border-gray-800/80 flex items-center justify-between select-none">
+            {/* Draggable Grip Portion */}
+            <div className="handle flex-1 flex items-center gap-2 cursor-grab active:cursor-grabbing min-w-0 pr-2">
+              <GripHorizontal size={16} className="text-gray-600 shrink-0 pointer-events-none" />
+              <div className="p-1.5 bg-emerald-500/10 rounded-lg border border-emerald-500/20 shrink-0 pointer-events-none">
                 <Sparkles size={14} className="text-emerald-400" />
               </div>
-              <div>
-                <h3 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-1.5">
+              <div className="min-w-0 pointer-events-none">
+                <h3 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-1.5 truncate">
                   Rama AI Hub
-                  <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-emerald-950/80 text-emerald-400 border border-emerald-500/30">
+                  <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-emerald-950/80 text-emerald-400 border border-emerald-500/30 shrink-0">
                     {lockdownState.active ? 'LOCKDOWN ON' : 'STANDBY'}
                   </span>
                 </h3>
@@ -751,20 +783,19 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
               </div>
             </div>
 
-            {/* Header Control Buttons */}
-            <div className="flex items-center gap-1">
+            {/* Non-Draggable Controls Container */}
+            <div
+              className="no-drag flex items-center gap-1 shrink-0 cursor-default"
+              onMouseDown={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+            >
               {/* Tab Switcher: Chat, History & Context, Memory Vault */}
-              <div className="no-drag flex items-center bg-gray-950 p-0.5 rounded-lg border border-gray-800 mr-1">
+              <div className="flex items-center bg-gray-950 p-0.5 rounded-lg border border-gray-800 mr-1">
                 <button
                   type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setActiveTab('chat');
-                  }}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onTouchStart={(e) => e.stopPropagation()}
+                  onClick={() => setActiveTab('chat')}
                   title="Chat Console"
-                  className={`no-drag px-2 py-1 text-[10px] font-bold rounded ${
+                  className={`px-2 py-1 text-[10px] font-bold rounded cursor-pointer ${
                     activeTab === 'chat'
                       ? 'bg-emerald-600 text-gray-950 font-black'
                       : 'text-gray-400 hover:text-white'
@@ -774,148 +805,201 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
                 </button>
                 <button
                   type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setActiveTab('history');
-                  }}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onTouchStart={(e) => e.stopPropagation()}
+                  onClick={() => setActiveTab('history')}
                   title="History & Context Manager"
-                  className={`no-drag px-2 py-1 text-[10px] font-bold rounded flex items-center gap-1 ${
+                  className={`px-2 py-1 text-[10px] font-bold rounded flex items-center gap-1 cursor-pointer ${
                     activeTab === 'history'
                       ? 'bg-emerald-600 text-gray-950 font-black'
                       : 'text-gray-400 hover:text-white'
                   } transition-colors`}
                 >
-                  <History size={11} />
+                  <History size={11} className="pointer-events-none" />
                   <span>{sessions.length}</span>
                 </button>
                 <button
                   type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setActiveTab('memory');
-                  }}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onTouchStart={(e) => e.stopPropagation()}
+                  onClick={() => setActiveTab('memory')}
                   title="Memory Vault"
-                  className={`no-drag px-2 py-1 text-[10px] font-bold rounded flex items-center gap-1 ${
+                  className={`px-2 py-1 text-[10px] font-bold rounded flex items-center gap-1 cursor-pointer ${
                     activeTab === 'memory'
                       ? 'bg-emerald-600 text-gray-950 font-black'
                       : 'text-gray-400 hover:text-white'
                   } transition-colors`}
                 >
-                  <Brain size={11} />
+                  <Brain size={11} className="pointer-events-none" />
                   <span>{memories.length}</span>
                 </button>
               </div>
 
-              {/* Export & Share Dropdown Menu */}
+              {/* DEDICATED EXPORT MENU DROPDOWN */}
               <div className="relative" ref={exportDropdownRef}>
                 <button
                   type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowExportMenu((prev) => !prev);
-                  }}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onTouchStart={(e) => e.stopPropagation()}
-                  title="Export & Share"
-                  className="no-drag p-1.5 text-gray-400 hover:text-emerald-400 hover:bg-gray-800 rounded-lg transition-colors"
+                  onClick={() => setShowExportMenu((prev) => !prev)}
+                  title="Open Export & Sharing Menu"
+                  className={`px-2 py-1 rounded-lg text-[11px] font-bold border flex items-center gap-1.5 transition-all cursor-pointer ${
+                    showExportMenu
+                      ? 'bg-emerald-600 text-gray-950 border-emerald-500'
+                      : 'bg-gray-800/80 hover:bg-gray-800 text-gray-200 hover:text-white border-gray-700'
+                  }`}
                 >
-                  <Share2 size={15} />
+                  <FileDown size={13} className="pointer-events-none" />
+                  <span>Export</span>
+                  <ChevronDown size={11} className={`pointer-events-none transition-transform ${showExportMenu ? 'rotate-180' : ''}`} />
                 </button>
 
                 {showExportMenu && (
                   <div
+                    className="absolute right-0 mt-2 w-64 bg-gray-950 border border-emerald-500/40 rounded-2xl shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95 text-xs select-none"
                     onMouseDown={(e) => e.stopPropagation()}
-                    className="no-drag absolute right-0 mt-2 w-56 bg-gray-950 border border-emerald-500/30 rounded-2xl shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95 text-xs"
+                    onPointerDown={(e) => e.stopPropagation()}
                   >
-                    <div className="px-2.5 py-1.5 border-b border-gray-800 text-[10px] font-black uppercase tracking-wider text-emerald-400">
-                      Export & Multi-Channel Share
+                    <div className="px-2.5 py-1.5 border-b border-gray-800 flex items-center justify-between">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400">
+                        Export & Multi-Channel
+                      </span>
+                      <span className="text-[9px] font-mono text-gray-500">v2.0</span>
+                    </div>
+
+                    {/* Section 1: Summaries */}
+                    <div className="pt-1.5 pb-1 text-[9px] font-black uppercase tracking-wider text-gray-500 px-2.5">
+                      Executive Summaries
                     </div>
 
                     <button
                       type="button"
-                      onClick={() => handleGenerateSummary()}
-                      className="w-full text-left px-2.5 py-2 hover:bg-gray-900 rounded-xl text-gray-200 hover:text-emerald-400 flex items-center gap-2 font-medium"
+                      onClick={() => {
+                        setShowExportMenu(false);
+                        handleGenerateSummary();
+                      }}
+                      className="w-full text-left px-2.5 py-1.5 hover:bg-gray-900 rounded-xl text-gray-200 hover:text-emerald-400 flex items-center gap-2 font-medium cursor-pointer"
                     >
-                      <Sparkles size={14} className="text-emerald-400" />
-                      <span>Executive Summary</span>
+                      <Sparkles size={13} className="text-emerald-400 shrink-0 pointer-events-none" />
+                      <span>Synthesize Executive Briefing</span>
                     </button>
 
                     <button
                       type="button"
-                      onClick={handleExportSummaryPdf}
-                      className="w-full text-left px-2.5 py-2 hover:bg-gray-900 rounded-xl text-emerald-400 hover:text-emerald-300 flex items-center gap-2 font-bold"
+                      onClick={() => {
+                        setShowExportMenu(false);
+                        handleExportSummaryPdf();
+                      }}
+                      className="w-full text-left px-2.5 py-1.5 hover:bg-gray-900 rounded-xl text-emerald-400 hover:text-emerald-300 flex items-center gap-2 font-bold cursor-pointer"
                     >
-                      <Printer size={14} className="text-emerald-400" />
-                      <span>Export Summary as PDF (.pdf)</span>
+                      <Printer size={13} className="text-emerald-400 shrink-0 pointer-events-none" />
+                      <span>Download Summary as PDF (.pdf)</span>
                     </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowExportMenu(false);
+                        handleExportSummaryFile('md');
+                      }}
+                      className="w-full text-left px-2.5 py-1.5 hover:bg-gray-900 rounded-xl text-gray-200 hover:text-emerald-400 flex items-center gap-2 font-medium cursor-pointer"
+                    >
+                      <FileDown size={13} className="text-gray-400 shrink-0 pointer-events-none" />
+                      <span>Download Summary (.md)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowExportMenu(false);
+                        handleExportSummaryFile('txt');
+                      }}
+                      className="w-full text-left px-2.5 py-1.5 hover:bg-gray-900 rounded-xl text-gray-200 hover:text-emerald-400 flex items-center gap-2 font-medium cursor-pointer"
+                    >
+                      <FileText size={13} className="text-gray-400 shrink-0 pointer-events-none" />
+                      <span>Download Summary as Text (.txt)</span>
+                    </button>
+
+                    {/* Section 2: Full Transcripts */}
+                    <div className="pt-2 pb-1 text-[9px] font-black uppercase tracking-wider text-gray-500 px-2.5 border-t border-gray-800/80 mt-1">
+                      Full Conversation Logs
+                    </div>
 
                     <button
                       type="button"
                       onClick={() => handleExportFullChat('md')}
-                      className="w-full text-left px-2.5 py-2 hover:bg-gray-900 rounded-xl text-gray-200 hover:text-emerald-400 flex items-center gap-2 font-medium"
+                      className="w-full text-left px-2.5 py-1.5 hover:bg-gray-900 rounded-xl text-gray-300 hover:text-emerald-400 flex items-center gap-2 font-medium cursor-pointer"
                     >
-                      <FileDown size={14} className="text-gray-400" />
-                      <span>Export Chat as Markdown (.md)</span>
+                      <FileCheck size={13} className="text-gray-400 shrink-0 pointer-events-none" />
+                      <span>Export Transcript (.md)</span>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => handleExportFullChat('txt')}
-                      className="w-full text-left px-2.5 py-2 hover:bg-gray-900 rounded-xl text-gray-200 hover:text-emerald-400 flex items-center gap-2 font-medium"
+                      className="w-full text-left px-2.5 py-1.5 hover:bg-gray-900 rounded-xl text-gray-300 hover:text-emerald-400 flex items-center gap-2 font-medium cursor-pointer"
                     >
-                      <FileText size={14} className="text-gray-400" />
-                      <span>Save as Text Document (.txt)</span>
+                      <FileText size={13} className="text-gray-400 shrink-0 pointer-events-none" />
+                      <span>Save Full Log (.txt)</span>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => handleExportFullChat('json')}
-                      className="w-full text-left px-2.5 py-2 hover:bg-gray-900 rounded-xl text-gray-200 hover:text-emerald-400 flex items-center gap-2 font-medium"
+                      className="w-full text-left px-2.5 py-1.5 hover:bg-gray-900 rounded-xl text-gray-300 hover:text-emerald-400 flex items-center gap-2 font-medium cursor-pointer"
                     >
-                      <Download size={14} className="text-gray-400" />
+                      <Download size={13} className="text-gray-400 shrink-0 pointer-events-none" />
                       <span>Export JSON Database</span>
                     </button>
 
-                    <div className="my-1 border-t border-gray-800" />
+                    {/* Section 3: Social & External Channels */}
+                    <div className="pt-2 pb-1 text-[9px] font-black uppercase tracking-wider text-gray-500 px-2.5 border-t border-gray-800/80 mt-1">
+                      External Sharing & Socials
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowExportMenu(false);
+                        handleExportSummaryClipboard();
+                      }}
+                      className="w-full text-left px-2.5 py-1.5 hover:bg-gray-900 rounded-xl text-gray-200 hover:text-emerald-400 flex items-center gap-2 font-medium cursor-pointer"
+                    >
+                      <Copy size={13} className="text-gray-400 shrink-0 pointer-events-none" />
+                      <span>Copy Summary to Clipboard</span>
+                    </button>
 
                     <button
                       type="button"
                       onClick={() => handleShareToWhatsApp()}
-                      className="w-full text-left px-2.5 py-2 hover:bg-gray-900 rounded-xl text-emerald-400 hover:text-emerald-300 flex items-center gap-2 font-medium"
+                      className="w-full text-left px-2.5 py-1.5 hover:bg-gray-900 rounded-xl text-emerald-400 hover:text-emerald-300 flex items-center gap-2 font-medium cursor-pointer"
                     >
-                      <ExternalLink size={14} />
+                      <ExternalLink size={13} className="shrink-0 pointer-events-none" />
                       <span>Share to WhatsApp</span>
                     </button>
 
                     <button
                       type="button"
-                      onClick={handleExportSummaryEmail}
-                      className="w-full text-left px-2.5 py-2 hover:bg-gray-900 rounded-xl text-gray-200 hover:text-emerald-400 flex items-center gap-2 font-medium"
+                      onClick={() => {
+                        setShowExportMenu(false);
+                        handleExportSummaryEmail();
+                      }}
+                      className="w-full text-left px-2.5 py-1.5 hover:bg-gray-900 rounded-xl text-gray-200 hover:text-emerald-400 flex items-center gap-2 font-medium cursor-pointer"
                     >
-                      <Mail size={14} />
-                      <span>Share via Email</span>
+                      <Mail size={13} className="text-gray-400 shrink-0 pointer-events-none" />
+                      <span>Dispatch via Email</span>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => handleNativeShare()}
-                      className="w-full text-left px-2.5 py-2 hover:bg-gray-900 rounded-xl text-gray-200 hover:text-emerald-400 flex items-center gap-2 font-medium"
+                      className="w-full text-left px-2.5 py-1.5 hover:bg-gray-900 rounded-xl text-gray-200 hover:text-emerald-400 flex items-center gap-2 font-medium cursor-pointer"
                     >
-                      <Share2 size={14} />
-                      <span>Share External Links</span>
+                      <Share2 size={13} className="text-gray-400 shrink-0 pointer-events-none" />
+                      <span>Share Links Externally</span>
                     </button>
 
                     <button
                       type="button"
                       onClick={handleCopyShareableLink}
-                      className="w-full text-left px-2.5 py-2 hover:bg-gray-900 rounded-xl text-gray-200 hover:text-emerald-400 flex items-center gap-2 font-medium"
+                      className="w-full text-left px-2.5 py-1.5 hover:bg-gray-900 rounded-xl text-gray-200 hover:text-emerald-400 flex items-center gap-2 font-medium cursor-pointer"
                     >
-                      <Globe size={14} />
-                      <span>Copy Web Launch URL</span>
+                      <Globe size={13} className="text-gray-400 shrink-0 pointer-events-none" />
+                      <span>Copy Web Launch Deep-Link</span>
                     </button>
                   </div>
                 )}
@@ -925,32 +1009,28 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
               <button
                 type="button"
                 onClick={handleToggleMinimize}
-                onMouseDown={(e) => e.stopPropagation()}
-                onTouchStart={(e) => e.stopPropagation()}
                 title="Minimize Rama AI Hub"
-                className="no-drag p-1.5 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+                className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors cursor-pointer"
               >
-                <Minus size={15} />
+                <Minus size={15} className="pointer-events-none" />
               </button>
 
               {/* Close Button */}
               <button
                 type="button"
                 onClick={handleClose}
-                onMouseDown={(e) => e.stopPropagation()}
-                onTouchStart={(e) => e.stopPropagation()}
                 title="Close Rama AI Hub"
-                className="no-drag p-1.5 text-gray-400 hover:text-red-400 hover:bg-gray-800 rounded-lg transition-colors"
+                className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-gray-800 rounded-lg transition-colors cursor-pointer"
               >
-                <X size={15} />
+                <X size={15} className="pointer-events-none" />
               </button>
             </div>
           </div>
 
           {/* TOAST FEEDBACK BANNER */}
           {toastMessage && (
-            <div className="bg-emerald-950/90 border-b border-emerald-500/40 text-emerald-300 text-[11px] font-bold px-4 py-1.5 text-center flex items-center justify-center gap-2 animate-in fade-in">
-              <Check size={12} className="text-emerald-400" />
+            <div className="bg-emerald-950/90 border-b border-emerald-500/40 text-emerald-300 text-[11px] font-bold px-4 py-1.5 text-center flex items-center justify-center gap-2 animate-in fade-in select-none">
+              <Check size={12} className="text-emerald-400 pointer-events-none" />
               <span>{toastMessage}</span>
             </div>
           )}
@@ -964,9 +1044,15 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
                   <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/80 px-1.5 py-0.5 rounded border border-emerald-500/30 shrink-0">
                     THREAD
                   </span>
-                  <span className="text-xs font-bold text-gray-200 truncate max-w-[140px] sm:max-w-[180px]">
+                  <span className="text-xs font-bold text-gray-200 truncate max-w-[130px] sm:max-w-[180px]">
                     {activeSession.title}
                   </span>
+                  {isPeriodicEngineRunning && (
+                    <span className="text-[9px] font-mono text-emerald-400 flex items-center gap-1 bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-500/20">
+                      <Loader2 size={9} className="animate-spin" />
+                      Syncing
+                    </span>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-1.5 shrink-0">
@@ -974,19 +1060,29 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
                     type="button"
                     onClick={() => handleGenerateSummary()}
                     title="Synthesize Executive Briefing"
-                    className="no-drag px-2.5 py-1 text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/20 rounded-lg transition-all flex items-center gap-1"
+                    className="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/20 rounded-lg transition-all flex items-center gap-1 cursor-pointer"
                   >
-                    <Sparkles size={11} />
+                    <Sparkles size={11} className="pointer-events-none" />
                     <span>Summary</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleExportSummaryPdf}
+                    title="Quick Download PDF Summary"
+                    className="px-2 py-1 text-[10px] font-bold bg-gray-900 hover:bg-gray-800 text-emerald-400 border border-emerald-500/30 rounded-lg transition-all flex items-center gap-1 cursor-pointer"
+                  >
+                    <Printer size={11} className="pointer-events-none" />
+                    <span>PDF</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={handleCreateNewSession}
                     title="Start New Thread"
-                    className="no-drag px-2 py-1 text-[10px] font-bold bg-gray-900 hover:bg-gray-800 text-gray-300 border border-gray-800 rounded-lg transition-all flex items-center gap-1"
+                    className="px-2 py-1 text-[10px] font-bold bg-gray-900 hover:bg-gray-800 text-gray-300 border border-gray-800 rounded-lg transition-all flex items-center gap-1 cursor-pointer"
                   >
-                    <Plus size={11} />
+                    <Plus size={11} className="pointer-events-none" />
                     <span>New</span>
                   </button>
                 </div>
@@ -1006,36 +1102,36 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
                           : 'bg-gray-900 border border-gray-800 text-gray-200 rounded-tl-none font-medium'
                       }`}
                     >
-                      <div className="whitespace-pre-wrap">{m.text}</div>
+                      <div className="whitespace-pre-wrap select-text">{m.text}</div>
 
                       {/* Per-Message Share & Copy Actions on hover */}
-                      <div className="no-drag opacity-0 group-hover:opacity-100 transition-opacity absolute -bottom-6 right-0 flex items-center gap-1 bg-gray-900 border border-gray-800 rounded-lg px-1.5 py-0.5 shadow-lg z-10">
+                      <div className="opacity-0 group-hover:opacity-100 transition-opacity absolute -bottom-6 right-0 flex items-center gap-1 bg-gray-900 border border-gray-800 rounded-lg px-1.5 py-0.5 shadow-lg z-10 select-none">
                         <button
                           type="button"
                           onClick={() => {
-                            ChatContextManager.exportToClipboard(m.text);
+                            ConversationManager.exportToClipboard(m.text);
                             showToast('Message copied');
                           }}
                           title="Copy text"
-                          className="p-1 text-gray-400 hover:text-white transition-colors"
+                          className="p-1 text-gray-400 hover:text-white transition-colors cursor-pointer"
                         >
-                          <Copy size={11} />
+                          <Copy size={11} className="pointer-events-none" />
                         </button>
                         <button
                           type="button"
                           onClick={() => handleShareToWhatsApp(m.text)}
                           title="Share to WhatsApp"
-                          className="p-1 text-emerald-400 hover:text-emerald-300 transition-colors"
+                          className="p-1 text-emerald-400 hover:text-emerald-300 transition-colors cursor-pointer"
                         >
-                          <ExternalLink size={11} />
+                          <ExternalLink size={11} className="pointer-events-none" />
                         </button>
                         <button
                           type="button"
                           onClick={() => handleNativeShare(m.text)}
                           title="Share message"
-                          className="p-1 text-gray-400 hover:text-white transition-colors"
+                          className="p-1 text-gray-400 hover:text-white transition-colors cursor-pointer"
                         >
-                          <Share2 size={11} />
+                          <Share2 size={11} className="pointer-events-none" />
                         </button>
                       </div>
                     </div>
@@ -1045,7 +1141,7 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
 
                 {isLoading && (
                   <div className="flex items-center gap-2 text-emerald-400 text-xs font-mono p-2">
-                    <Loader2 size={14} className="animate-spin" />
+                    <Loader2 size={14} className="animate-spin pointer-events-none" />
                     <span>Rama is synthesizing with full memory awareness...</span>
                   </div>
                 )}
@@ -1061,9 +1157,9 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
                     <button
                       type="button"
                       onClick={() => handleSendMessage()}
-                      className="text-xs bg-red-600 hover:bg-red-500 text-white font-bold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1"
+                      className="text-xs bg-red-600 hover:bg-red-500 text-white font-bold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
                     >
-                      <RefreshCw size={12} />
+                      <RefreshCw size={12} className="pointer-events-none" />
                       Retry
                     </button>
                   </div>
@@ -1086,9 +1182,9 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
                   type="button"
                   onClick={() => handleSendMessage()}
                   disabled={!input.trim() || isLoading}
-                  className="p-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-gray-950 font-bold rounded-xl transition-all flex items-center justify-center shrink-0"
+                  className="p-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-gray-950 font-bold rounded-xl transition-all flex items-center justify-center shrink-0 cursor-pointer"
                 >
-                  <Send size={15} />
+                  <Send size={15} className="pointer-events-none" />
                 </button>
               </div>
             </>
@@ -1120,47 +1216,57 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
                 </div>
               </div>
 
-              {/* Continuous Rolling Interaction Awareness */}
+              {/* Periodic Conversation Context Engine */}
               <div className="bg-gray-900/40 border border-emerald-500/20 rounded-2xl p-3.5 space-y-2">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5 text-emerald-400 font-bold text-xs uppercase tracking-wider">
-                    <Brain size={13} />
-                    <span>AI Rolling Interaction Awareness</span>
+                    <Brain size={13} className="pointer-events-none" />
+                    <span>Periodic Summary & Context Engine</span>
                   </div>
                   <button
                     type="button"
-                    onClick={handleUpdateRollingSummary}
-                    disabled={isUpdatingRollingSummary}
-                    className="text-[10px] text-emerald-400 hover:text-emerald-300 font-bold flex items-center gap-1 disabled:opacity-50"
+                    onClick={handleUpdateConversationContext}
+                    disabled={isPeriodicEngineRunning}
+                    className="text-[10px] text-emerald-400 hover:text-emerald-300 font-bold flex items-center gap-1 disabled:opacity-50 cursor-pointer"
                   >
-                    {isUpdatingRollingSummary ? (
-                      <Loader2 size={11} className="animate-spin" />
+                    {isPeriodicEngineRunning ? (
+                      <Loader2 size={11} className="animate-spin pointer-events-none" />
                     ) : (
-                      <RefreshCw size={11} />
+                      <RefreshCw size={11} className="pointer-events-none" />
                     )}
-                    <span>Re-synthesize</span>
+                    <span>Synthesize Context Now</span>
                   </button>
                 </div>
-                <p className="text-[11px] text-gray-300 leading-relaxed font-mono whitespace-pre-wrap bg-gray-950/70 p-2.5 rounded-xl border border-gray-800 max-h-32 overflow-y-auto custom-scrollbar">
-                  {rollingSummary}
+                <p className="text-[11px] text-gray-300 leading-relaxed font-mono whitespace-pre-wrap bg-gray-950/70 p-2.5 rounded-xl border border-gray-800 max-h-32 overflow-y-auto custom-scrollbar select-text">
+                  {conversationContext}
                 </p>
-                <p className="text-[9px] text-gray-500">
-                  Rama injects this cumulative memory into every turn so advice builds on past sessions.
-                </p>
+                <div className="flex items-center justify-between text-[9px] text-gray-500">
+                  <span>Auto-updates every 4 messages to preserve user identity & goals</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      ConversationManager.exportToClipboard(conversationContext);
+                      showToast('Context copied to clipboard');
+                    }}
+                    className="text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <Copy size={10} className="pointer-events-none" /> Copy Context
+                  </button>
+                </div>
               </div>
 
               {/* Sessions List Header */}
               <div className="flex items-center justify-between pt-1">
                 <span className="text-[11px] font-black uppercase tracking-wider text-gray-300 flex items-center gap-1.5">
-                  <Layers size={13} className="text-emerald-400" />
+                  <Layers size={13} className="text-emerald-400 pointer-events-none" />
                   <span>Conversation History ({sessions.length})</span>
                 </span>
                 <button
                   type="button"
                   onClick={handleCreateNewSession}
-                  className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-gray-950 font-bold rounded-lg text-xs flex items-center gap-1 transition-all"
+                  className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-gray-950 font-bold rounded-lg text-xs flex items-center gap-1 transition-all cursor-pointer"
                 >
-                  <Plus size={12} />
+                  <Plus size={12} className="pointer-events-none" />
                   <span>New Session</span>
                 </button>
               </div>
@@ -1194,12 +1300,12 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
                           </div>
                           <div className="flex items-center gap-2 mt-1 text-[10px] text-gray-400 font-mono">
                             <span className="flex items-center gap-1">
-                              <Calendar size={10} />
+                              <Calendar size={10} className="pointer-events-none" />
                               {dateStr}
                             </span>
                             <span>•</span>
                             <span className="flex items-center gap-1">
-                              <MessageSquare size={10} />
+                              <MessageSquare size={10} className="pointer-events-none" />
                               {sess.messages.length} msgs
                             </span>
                           </div>
@@ -1214,17 +1320,17 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
                             type="button"
                             onClick={() => handleGenerateSummary(sess)}
                             title="View / Synthesize Summary"
-                            className="p-1.5 text-gray-400 hover:text-emerald-400 hover:bg-gray-800 rounded-lg transition-colors"
+                            className="p-1.5 text-gray-400 hover:text-emerald-400 hover:bg-gray-800 rounded-lg transition-colors cursor-pointer"
                           >
-                            <Sparkles size={13} />
+                            <Sparkles size={13} className="pointer-events-none" />
                           </button>
                           <button
                             type="button"
                             onClick={(e) => handleDeleteSession(sess.id, e)}
                             title="Delete Session"
-                            className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-gray-800 rounded-lg transition-colors"
+                            className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-gray-800 rounded-lg transition-colors cursor-pointer"
                           >
-                            <Trash2 size={13} />
+                            <Trash2 size={13} className="pointer-events-none" />
                           </button>
                         </div>
                       </div>
@@ -1246,7 +1352,7 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
             <div className="no-drag flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar flex flex-col">
               <div className="bg-gray-900/60 border border-gray-800/80 rounded-2xl p-3.5 space-y-1">
                 <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs uppercase tracking-wider">
-                  <Brain size={14} />
+                  <Brain size={14} className="pointer-events-none" />
                   <span>Rama Persistent Memory Vault</span>
                 </div>
                 <p className="text-[11px] text-gray-400 leading-relaxed">
@@ -1265,9 +1371,9 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
                 <button
                   type="submit"
                   disabled={!newMemoryInput.trim()}
-                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-gray-950 font-bold rounded-xl text-xs transition-colors flex items-center gap-1"
+                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-gray-950 font-bold rounded-xl text-xs transition-colors flex items-center gap-1 cursor-pointer"
                 >
-                  <Plus size={14} />
+                  <Plus size={14} className="pointer-events-none" />
                   <span>Add</span>
                 </button>
               </form>
@@ -1280,16 +1386,16 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
                     className="p-3 bg-gray-900/80 border border-gray-800/80 hover:border-emerald-500/30 rounded-xl flex items-start justify-between gap-3 text-xs text-gray-200 transition-colors"
                   >
                     <div className="flex items-start gap-2">
-                      <Bookmark size={13} className="text-emerald-400 shrink-0 mt-0.5" />
-                      <span className="leading-snug">{mem}</span>
+                      <Bookmark size={13} className="text-emerald-400 shrink-0 mt-0.5 pointer-events-none" />
+                      <span className="leading-snug select-text">{mem}</span>
                     </div>
                     <button
                       type="button"
                       onClick={() => removeMemoryItem(index)}
-                      className="text-gray-500 hover:text-red-400 p-1 rounded transition-colors shrink-0"
+                      className="text-gray-500 hover:text-red-400 p-1 rounded transition-colors shrink-0 cursor-pointer"
                       title="Delete memory anchor"
                     >
-                      <Trash2 size={13} />
+                      <Trash2 size={13} className="pointer-events-none" />
                     </button>
                   </div>
                 ))}
@@ -1305,7 +1411,7 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
                       window.location.reload();
                     }
                   }}
-                  className="hover:text-red-400 transition-colors"
+                  className="hover:text-red-400 transition-colors cursor-pointer"
                 >
                   Reset Vault
                 </button>
@@ -1318,7 +1424,7 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
             <div className="no-drag absolute inset-0 bg-gray-950/98 backdrop-blur-2xl z-50 flex flex-col p-4 animate-in fade-in">
               <div className="flex items-center justify-between pb-3 border-b border-gray-800">
                 <div className="flex items-center gap-2">
-                  <Sparkles size={16} className="text-emerald-400" />
+                  <Sparkles size={16} className="text-emerald-400 pointer-events-none" />
                   <div>
                     <h4 className="text-xs font-black uppercase tracking-wider text-white">
                       Executive Summary & Briefing
@@ -1331,16 +1437,16 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
                 <button
                   type="button"
                   onClick={() => setShowSummaryModal(false)}
-                  className="p-1.5 text-gray-400 hover:text-white rounded-lg transition-colors"
+                  className="p-1.5 text-gray-400 hover:text-white rounded-lg transition-colors cursor-pointer"
                 >
-                  <X size={16} />
+                  <X size={16} className="pointer-events-none" />
                 </button>
               </div>
 
               <div className="flex-1 overflow-y-auto py-3 text-xs leading-relaxed text-gray-300 font-mono whitespace-pre-wrap custom-scrollbar select-text">
                 {isGeneratingSummary ? (
                   <div className="flex flex-col items-center justify-center h-full gap-2 text-emerald-400">
-                    <Loader2 size={22} className="animate-spin" />
+                    <Loader2 size={22} className="animate-spin pointer-events-none" />
                     <span className="text-xs font-sans">Compiling executive briefing directives...</span>
                   </div>
                 ) : (
@@ -1356,9 +1462,9 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
                     <button
                       type="button"
                       onClick={handleExportSummaryClipboard}
-                      className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-xl text-xs font-bold text-gray-200 flex items-center gap-1.5 transition-colors"
+                      className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-xl text-xs font-bold text-gray-200 flex items-center gap-1.5 transition-colors cursor-pointer"
                     >
-                      <Copy size={13} />
+                      <Copy size={13} className="pointer-events-none" />
                       <span>Copy</span>
                     </button>
 
@@ -1366,9 +1472,9 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
                     <button
                       type="button"
                       onClick={handleExportSummaryPdf}
-                      className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded-xl text-xs font-black text-gray-950 flex items-center gap-1.5 transition-colors"
+                      className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded-xl text-xs font-black text-gray-950 flex items-center gap-1.5 transition-colors cursor-pointer"
                     >
-                      <Printer size={13} />
+                      <Printer size={13} className="pointer-events-none" />
                       <span>Save as PDF (.pdf)</span>
                     </button>
 
@@ -1376,9 +1482,9 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
                     <button
                       type="button"
                       onClick={() => handleExportSummaryFile('md')}
-                      className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-xl text-xs font-bold text-gray-200 flex items-center gap-1.5 transition-colors"
+                      className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-xl text-xs font-bold text-gray-200 flex items-center gap-1.5 transition-colors cursor-pointer"
                     >
-                      <FileDown size={13} />
+                      <FileDown size={13} className="pointer-events-none" />
                       <span>Markdown (.md)</span>
                     </button>
                   </div>
@@ -1388,9 +1494,9 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
                     <button
                       type="button"
                       onClick={() => handleShareToWhatsApp(summaryText)}
-                      className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-xl text-xs font-bold text-emerald-400 flex items-center gap-1.5 transition-colors"
+                      className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-xl text-xs font-bold text-emerald-400 flex items-center gap-1.5 transition-colors cursor-pointer"
                     >
-                      <ExternalLink size={13} />
+                      <ExternalLink size={13} className="pointer-events-none" />
                       <span>WhatsApp</span>
                     </button>
 
@@ -1398,9 +1504,9 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
                     <button
                       type="button"
                       onClick={handleExportSummaryEmail}
-                      className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-xl text-xs font-bold text-gray-200 flex items-center gap-1.5 transition-colors"
+                      className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-xl text-xs font-bold text-gray-200 flex items-center gap-1.5 transition-colors cursor-pointer"
                     >
-                      <Mail size={13} />
+                      <Mail size={13} className="pointer-events-none" />
                       <span>Email</span>
                     </button>
 
@@ -1408,9 +1514,9 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
                     <button
                       type="button"
                       onClick={() => handleNativeShare(summaryText)}
-                      className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-xl text-xs font-bold text-gray-200 flex items-center gap-1.5 transition-colors"
+                      className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-xl text-xs font-bold text-gray-200 flex items-center gap-1.5 transition-colors cursor-pointer"
                     >
-                      <Share2 size={13} />
+                      <Share2 size={13} className="pointer-events-none" />
                       <span>Share</span>
                     </button>
                   </div>
@@ -1424,7 +1530,7 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
             <div className="no-drag absolute inset-0 bg-gray-950/98 backdrop-blur-2xl z-50 flex flex-col p-4 animate-in fade-in">
               <div className="flex items-center justify-between pb-3 border-b border-gray-800">
                 <div className="flex items-center gap-2">
-                  <Share2 size={16} className="text-emerald-400" />
+                  <Share2 size={16} className="text-emerald-400 pointer-events-none" />
                   <h4 className="text-xs font-black uppercase tracking-wider text-white">
                     Share Workspace & Consultation
                   </h4>
@@ -1432,9 +1538,9 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
                 <button
                   type="button"
                   onClick={() => setShowShareModal(false)}
-                  className="p-1.5 text-gray-400 hover:text-white rounded-lg transition-colors"
+                  className="p-1.5 text-gray-400 hover:text-white rounded-lg transition-colors cursor-pointer"
                 >
-                  <X size={16} />
+                  <X size={16} className="pointer-events-none" />
                 </button>
               </div>
 
@@ -1446,13 +1552,13 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
                   <div className="flex gap-2">
                     <input
                       readOnly
-                      value={ChatContextManager.getShareableLink(activeSessionId)}
+                      value={ConversationManager.getShareableLink(activeSessionId)}
                       className="flex-1 bg-gray-900 border border-gray-800 rounded-xl px-3 py-2 text-white font-mono text-[11px]"
                     />
                     <button
                       type="button"
                       onClick={handleCopyShareableLink}
-                      className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-gray-950 font-bold rounded-xl text-xs transition-colors shrink-0"
+                      className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-gray-950 font-bold rounded-xl text-xs transition-colors shrink-0 cursor-pointer"
                     >
                       Copy
                     </button>
@@ -1467,23 +1573,23 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
                   <button
                     type="button"
                     onClick={() => handleShareToWhatsApp()}
-                    className="w-full p-2.5 bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-xl text-emerald-400 font-bold flex items-center justify-between transition-colors"
+                    className="w-full p-2.5 bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-xl text-emerald-400 font-bold flex items-center justify-between transition-colors cursor-pointer"
                   >
                     <span className="flex items-center gap-2">
-                      <ExternalLink size={14} /> WhatsApp Direct Message
+                      <ExternalLink size={14} className="pointer-events-none" /> WhatsApp Direct Message
                     </span>
-                    <ChevronRight size={14} className="text-gray-500" />
+                    <ChevronRight size={14} className="text-gray-500 pointer-events-none" />
                   </button>
 
                   <button
                     type="button"
                     onClick={handleExportSummaryEmail}
-                    className="w-full p-2.5 bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-xl text-gray-200 font-bold flex items-center justify-between transition-colors"
+                    className="w-full p-2.5 bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-xl text-gray-200 font-bold flex items-center justify-between transition-colors cursor-pointer"
                   >
                     <span className="flex items-center gap-2">
-                      <Mail size={14} /> Dispatch via Email
+                      <Mail size={14} className="pointer-events-none" /> Dispatch via Email
                     </span>
-                    <ChevronRight size={14} className="text-gray-500" />
+                    <ChevronRight size={14} className="text-gray-500 pointer-events-none" />
                   </button>
 
                   <button
@@ -1493,12 +1599,12 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
                       const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`;
                       window.open(twitterUrl, '_blank');
                     }}
-                    className="w-full p-2.5 bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-xl text-gray-200 font-bold flex items-center justify-between transition-colors"
+                    className="w-full p-2.5 bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-xl text-gray-200 font-bold flex items-center justify-between transition-colors cursor-pointer"
                   >
                     <span className="flex items-center gap-2">
-                      <Globe size={14} /> Post to X / Social Channels
+                      <Globe size={14} className="pointer-events-none" /> Post to X / Social Channels
                     </span>
-                    <ChevronRight size={14} className="text-gray-500" />
+                    <ChevronRight size={14} className="text-gray-500 pointer-events-none" />
                   </button>
                 </div>
               </div>
@@ -1507,7 +1613,7 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
                 <button
                   type="button"
                   onClick={() => setShowShareModal(false)}
-                  className="px-4 py-2 bg-gray-900 hover:bg-gray-800 text-gray-300 font-bold rounded-xl text-xs transition-colors"
+                  className="px-4 py-2 bg-gray-900 hover:bg-gray-800 text-gray-300 font-bold rounded-xl text-xs transition-colors cursor-pointer"
                 >
                   Close
                 </button>

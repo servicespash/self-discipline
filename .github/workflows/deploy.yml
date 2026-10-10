@@ -3,6 +3,7 @@ name: Deploy Cymatic Discipline OS to GitHub Pages
 on:
   push:
     branches: [main, master]
+  workflow_dispatch:
 
 jobs:
   build-and-deploy:
@@ -11,13 +12,18 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node.js (Node 24)
         uses: actions/setup-node@v4
         with:
           node-version: 24
 
       - name: Install Dependencies
-        run: npm install
+        run: |
+          if [ -f "package-lock.json" ]; then
+            npm ci || npm install
+          else
+            npm install
+          fi
 
       - name: Build Application
         run: npm run build
