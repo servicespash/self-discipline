@@ -5,12 +5,14 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { HashRouter } from 'react-router-dom';
 import { SessionProvider, useSession } from './context/SessionContext';
 import Dashboard from './components/Dashboard';
 import LockdownOverlay from './components/LockdownOverlay';
 import RamaFloatingHub from './components/RamaFloatingHub';
 import { DisciplineBridge, SystemLockdownPayload } from './DisciplineBridge';
-import { Shield, ShieldAlert, Cpu, LogOut, Terminal } from 'lucide-react';
+import { SpiritualNotifications } from './utils/spiritualNotificationService';
+import { Shield, ShieldAlert, Cpu, LogOut, Terminal, BotMessageSquare } from 'lucide-react';
 
 const AppContent: React.FC = () => {
   const { session, loading, signIn, signOut } = useSession();
@@ -18,19 +20,52 @@ const AppContent: React.FC = () => {
   const [inputMoniker, setInputMoniker] = useState('');
   const [lockdownState, setLockdownState] = useState<SystemLockdownPayload>(() => DisciplineBridge.getState());
   const [bridgeReady, setBridgeReady] = useState(false);
+  const [isHubVisible, setIsHubVisible] = useState(false);
 
-  // Subscribe to DisciplineBridge State
+  // Subscribe to DisciplineBridge State & Initialize Notifications
   useEffect(() => {
     const unsubscribe = DisciplineBridge.subscribe((state) => {
       setLockdownState(state);
     });
+
+    SpiritualNotifications.init();
 
     // Initialize Native System Permissions
     DisciplineBridge.checkPermissions().then(() => {
       setBridgeReady(true);
     });
 
-    return () => unsubscribe();
+    // Deep linking & App-launch shortcut event interception
+    const handleLaunchUrl = (urlStr: string) => {
+      try {
+        if (urlStr.includes('action=summon_rama') || urlStr.includes('open_rama')) {
+          setIsHubVisible(true);
+        }
+      } catch (err) {
+        console.error('[Launch] Intercept error:', err);
+      }
+    };
+
+    handleLaunchUrl(window.location.href);
+
+    const onHashOrPop = () => handleLaunchUrl(window.location.href);
+    window.addEventListener('hashchange', onHashOrPop);
+    window.addEventListener('popstate', onHashOrPop);
+
+    // Support W3C launchQueue API for PWA OS shortcut launch interception
+    if (typeof window !== 'undefined' && 'launchQueue' in window && (window as any).launchQueue) {
+      (window as any).launchQueue.setConsumer((launchParams: any) => {
+        if (launchParams && launchParams.targetURL) {
+          handleLaunchUrl(launchParams.targetURL);
+        }
+      });
+    }
+
+    return () => {
+      unsubscribe();
+      window.removeEventListener('hashchange', onHashOrPop);
+      window.removeEventListener('popstate', onHashOrPop);
+    };
   }, []);
 
   const handleSignInSubmit = (e: React.FormEvent) => {
@@ -122,37 +157,31 @@ const AppContent: React.FC = () => {
   }
 
   return (
-    <div className="relative min-h-screen bg-gray-950 text-gray-100 font-sans selection:bg-emerald-500 selection:text-gray-950">
-      {/* Top Navigation Bar */}
-      <header className="fixed top-4 right-4 z-[90] flex items-center gap-3 bg-gray-900/90 border border-gray-800 px-4 py-2 rounded-full text-xs text-gray-300 shadow-2xl backdrop-blur-xl">
-        <span className="relative flex h-2.5 w-2.5">
-          <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${lockdownState.active ? 'bg-amber-400' : 'bg-emerald-400'}`} />
-          <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${lockdownState.active ? 'bg-amber-500' : 'bg-emerald-500'}`} />
-        </span>
-        <span className="font-bold text-white tracking-wide">{session.moniker}</span>
-        {lockdownState.active && (
-          <span className="text-[9px] font-black uppercase px-2 py-0.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-full flex items-center gap-1">
-            <ShieldAlert size={10} /> Locked
-          </span>
-        )}
-        <button
-          onClick={signOut}
-          className="ml-2 text-gray-500 hover:text-red-400 p-1 rounded-lg transition-colors"
-          title="Disconnect Session"
-        >
-          <LogOut size={14} />
-        </button>
-      </header>
+    <HashRouter>
+      {/* Global Discipline Lockdown Overlay */}
+      <LockdownOverlay />
 
       {/* Primary Workspace View */}
       <Dashboard accessToken={null} />
 
-      {/* Global Discipline Lockdown Overlay */}
-      <LockdownOverlay />
-
       {/* Global AI Floating Execution Hub */}
-      <RamaFloatingHub context="Cymatic Hub & Resonance Universal Shell" />
-    </div>
+      {isHubVisible ? (
+        <RamaFloatingHub 
+          context="Cymatic Hub & Resonance Universal Shell" 
+          session={session}
+          onClose={() => setIsHubVisible(false)} 
+        />
+      ) : (
+        <button
+          onClick={() => setIsHubVisible(true)}
+          className="fixed bottom-6 right-6 z-[120] p-4 bg-gray-900/90 hover:bg-gray-800 backdrop-blur-xl border border-emerald-500/40 rounded-full text-emerald-400 shadow-2xl transition-all duration-200 hover:scale-105 active:scale-95 flex items-center justify-center gap-2 group"
+          title="Summon Rama AI Hub"
+        >
+          <BotMessageSquare size={24} className="group-hover:rotate-6 transition-transform" />
+          <span className="hidden sm:inline-block text-[11px] font-black uppercase tracking-wider text-emerald-400">Rama AI</span>
+        </button>
+      )}
+    </HashRouter>
   );
 };
 

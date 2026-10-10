@@ -2,29 +2,126 @@
 <html lang="en">
   <head>
     <script>
-      window.onerror = function(msg, url, line, col, error) {
-        var el = document.getElementById('loading-marker');
-        if (el) {
-          el.style.color = '#ef4444';
-          el.style.borderColor = '#ef4444';
-          el.innerText = 'FATAL_ERROR: ' + msg + ' (Line: ' + line + ')';
+      // Ignore WebSocket and HMR errors per environment constraints ("HMR: Disabled. Ignore WebSocket errors.")
+      (function() {
+        if (typeof window === 'undefined') return;
+
+        // 1. Console.error filter
+        var _origError = console.error;
+        console.error = function() {
+          var args = Array.prototype.slice.call(arguments);
+          var str = args.map(function(arg) {
+            if (!arg) return '';
+            if (arg instanceof Error) return arg.message + ' ' + (arg.stack || '');
+            return typeof arg === 'object' ? JSON.stringify(arg) : String(arg);
+          }).join(' ');
+          if (str.indexOf('WebSocket') !== -1 || str.indexOf('[vite]') !== -1 || str.indexOf('vite-hmr') !== -1 || str.indexOf('vite:ws') !== -1) {
+            return;
+          }
+          _origError.apply(console, arguments);
+        };
+
+        // 2. Global error event listeners
+        window.addEventListener('error', function(e) {
+          var msg = (e && (e.message || '')) + '';
+          if (msg.indexOf('WebSocket') !== -1 || msg.indexOf('[vite]') !== -1 || msg.indexOf('vite:ws') !== -1) {
+            e.stopImmediatePropagation();
+            e.preventDefault();
+            return true;
+          }
+        }, true);
+
+        window.addEventListener('unhandledrejection', function(e) {
+          var reason = (e && e.reason && (e.reason.message || String(e.reason))) || '';
+          if (typeof reason === 'string' && (reason.indexOf('WebSocket') !== -1 || reason.indexOf('[vite]') !== -1 || reason.indexOf('vite:ws') !== -1)) {
+            e.stopImmediatePropagation();
+            e.preventDefault();
+            return true;
+          }
+        }, true);
+
+        window.onerror = function(msg) {
+          var str = String(msg || '');
+          if (str.indexOf('WebSocket') !== -1 || str.indexOf('[vite]') !== -1 || str.indexOf('vite:ws') !== -1) {
+            return true;
+          }
+          return false;
+        };
+
+        // 3. Mock Vite HMR WebSocket so client connects cleanly without closing
+        var OrigWS = window.WebSocket;
+        function MockViteWebSocket(url, protocols) {
+          var isHmr = protocols === 'vite-hmr' || (Array.isArray(protocols) && protocols.indexOf('vite-hmr') !== -1);
+          if (isHmr) {
+            var target = new EventTarget();
+            var socket = {
+              OPEN: 1,
+              CLOSED: 3,
+              CLOSING: 2,
+              CONNECTING: 0,
+              readyState: 1,
+              url: String(url),
+              protocol: 'vite-hmr',
+              extensions: '',
+              bufferedAmount: 0,
+              binaryType: 'blob',
+              send: function() {},
+              close: function() {
+                socket.readyState = 3;
+              },
+              addEventListener: function(type, listener, options) {
+                target.addEventListener(type, listener, options);
+                if (type === 'open') {
+                  setTimeout(function() {
+                    var ev = new Event('open');
+                    target.dispatchEvent(ev);
+                    if (typeof socket.onopen === 'function') socket.onopen(ev);
+                  }, 0);
+                }
+              },
+              removeEventListener: function(type, listener, options) {
+                target.removeEventListener(type, listener, options);
+              },
+              dispatchEvent: function(event) {
+                return target.dispatchEvent(event);
+              },
+              onopen: null,
+              onclose: null,
+              onerror: null,
+              onmessage: null
+            };
+            return socket;
+          }
+          return new OrigWS(url, protocols);
         }
-        return false;
-      };
+
+        MockViteWebSocket.prototype = OrigWS ? OrigWS.prototype : {};
+        MockViteWebSocket.CONNECTING = 0;
+        MockViteWebSocket.OPEN = 1;
+        MockViteWebSocket.CLOSING = 2;
+        MockViteWebSocket.CLOSED = 3;
+        window.WebSocket = MockViteWebSocket;
+      })();
     </script>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>Cymatic Discipline OS</title>
     <meta name="description" content="Unified system orchestrator for high-performance architectural discipline and resonance." />
+    <meta name="theme-color" content="#030712" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="CymaticOS" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="alternate icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="apple-touch-startup-image" href="/splash-screen.png" />
     <meta property="og:title" content="Cymatic Discipline OS" />
     <meta property="og:description" content="Unified system orchestrator for high-performance architectural discipline and resonance." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
   </head>
   <body class="bg-gray-950 text-gray-100" style="background-color: #030712; margin: 0; padding: 0; overflow: hidden;">
-    <div id="loading-marker" style="position:fixed; top:20px; left:20px; font-family:monospace; font-size:12px; color:#10b981; z-index:9999; background: rgba(0,0,0,0.8); padding: 8px 12px; border: 1px solid #10b981; border-radius: 4px; pointer-events: none; letter-spacing: 0.1em;">
-      SYSM_RES_ACTIVE_V3
-    </div>
     <div id="root"></div>
     <script type="module" crossorigin src="/src/main.tsx"></script>
   </body>

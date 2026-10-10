@@ -19,6 +19,7 @@ export interface ObjectiveGoal {
   targetAmount?: number; // UGX
   currentAmount?: number; // UGX
   completed: boolean;
+  linkedRule?: string;
 }
 
 export interface SystemRules {
@@ -85,6 +86,18 @@ export default function GoalSetting() {
   const [startDateInput, setStartDateInput] = useState('');
   const [endDateInput, setEndDateInput] = useState('');
   const [targetAmountInput, setTargetAmountInput] = useState<string>('');
+  const [selectedRule, setSelectedRule] = useState<string>('');
+
+  const exportGoals = () => {
+    const data = JSON.stringify({ goals, rules }, null, 2);
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `discipline_log_${new Date().toISOString()}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   useEffect(() => {
     try {
@@ -115,7 +128,8 @@ export default function GoalSetting() {
       endDate: endDateInput || undefined,
       targetAmount: typeInput === 'financial' ? parseFloat(targetAmountInput) || 0 : undefined,
       currentAmount: typeInput === 'financial' ? 0 : undefined,
-      completed: false
+      completed: false,
+      linkedRule: selectedRule || undefined
     };
 
     setGoals([newGoal, ...goals]);
@@ -141,9 +155,12 @@ export default function GoalSetting() {
           <h3 className="text-sm font-black text-white uppercase tracking-widest flex items-center gap-2">
             <Target size={18} className="text-emerald-400" /> Goal & Milestone Architecture
           </h3>
-          <span className="text-[10px] font-black uppercase px-2.5 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full">
-            {goals.filter(g => !g.completed).length} Active
-          </span>
+          <div className="flex gap-2">
+            <button onClick={exportGoals} className="text-[10px] font-black uppercase px-2.5 py-1 bg-gray-800 text-gray-300 rounded-full hover:bg-gray-700">Export Logs</button>
+            <span className="text-[10px] font-black uppercase px-2.5 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full">
+              {goals.filter(g => !g.completed).length} Active
+            </span>
+          </div>
         </div>
 
         {/* Creation Form */}
@@ -211,6 +228,20 @@ export default function GoalSetting() {
               </>
             )}
 
+            <div>
+              <label className="text-[9px] font-black text-gray-500 uppercase tracking-wider block mb-1">Link Rule</label>
+              <select
+                value={selectedRule}
+                onChange={(e) => setSelectedRule(e.target.value)}
+                className="w-full bg-gray-900 border border-gray-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+              >
+                <option value="">No Rule Linked</option>
+                <option value="sleep">Sleep Protocol</option>
+                <option value="apps">App Restrictions</option>
+                <option value="daily">Daily Protocol</option>
+              </select>
+            </div>
+            
             <div>
               <label className="text-[9px] font-black text-gray-500 uppercase tracking-wider block mb-1">Priority</label>
               <div className="flex gap-1">

@@ -6,12 +6,14 @@
 
 import React, { useState, useEffect } from 'react';
 import { CheckCircle2, Circle, RefreshCw, CheckSquare, Plus, Trash2 } from 'lucide-react';
+import { DisciplineBridge } from '../DisciplineBridge';
 
 interface TaskItem {
   id: string;
   title: string;
-  status: 'needsAction' | 'completed';
+  status: 'needsAction' | 'inProgress' | 'completed';
   source: 'local' | 'cloud';
+  linkedRule?: string;
 }
 
 const LOCAL_TASKS_KEY = 'sdc_local_operations_v1';
@@ -30,6 +32,7 @@ export default function TaskWidget({ accessToken }: { accessToken: string | null
   });
 
   const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [selectedRule, setSelectedRule] = useState<string>('');
   const [loading, setLoading] = useState(false);
 
   // Sync to local storage whenever tasks change
@@ -84,17 +87,22 @@ export default function TaskWidget({ accessToken }: { accessToken: string | null
       id: `local_${Date.now()}`,
       title: newTaskTitle.trim(),
       status: 'needsAction',
-      source: 'local'
+      source: 'local',
+      linkedRule: selectedRule || undefined
     };
 
     setTasks([newTask, ...tasks]);
     setNewTaskTitle('');
+    setSelectedRule('');
   };
 
-  const toggleTask = (id: string) => {
+  const toggleTask = (id: string, newStatus: TaskItem['status']) => {
     setTasks(tasks.map((t) => {
       if (t.id === id) {
-        return { ...t, status: t.status === 'completed' ? 'needsAction' : 'completed' };
+        if (newStatus === 'inProgress' && t.linkedRule) {
+           DisciplineBridge.initiateLockdown(30);
+        }
+        return { ...t, status: newStatus };
       }
       return t;
     }));
@@ -129,18 +137,19 @@ export default function TaskWidget({ accessToken }: { accessToken: string | null
         </div>
 
         {/* Task Input Form */}
-        <form onSubmit={addTask} className="mb-4 flex gap-2">
+        <form onSubmit={addTask} className="mb-4 space-y-2">
           <input
             type="text"
             value={newTaskTitle}
             onChange={(e) => setNewTaskTitle(e.target.value)}
             placeholder="New operation or task..."
-            className="flex-1 bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-emerald-500/50 transition-colors"
+            className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-emerald-500/50 transition-colors"
           />
-          <button
-            type="submit"
-            className="bg-emerald-600 hover:bg-emerald-500 text-gray-950 font-black p-2.5 rounded-xl transition-all"
-          >
+          <select value={selectedRule} onChange={(e) => setSelectedRule(e.target.value)} className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2 text-xs text-gray-400">
+             <option value="">No Rule Linked</option>
+             <option value="sleep">Sleep Protocol</option>
+          </select>
+          <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-gray-950 font-black p-2.5 rounded-xl transition-all">
             <Plus size={16} />
           </button>
         </form>
@@ -158,15 +167,20 @@ export default function TaskWidget({ accessToken }: { accessToken: string | null
               className="flex items-center justify-between p-3 bg-gray-950/60 rounded-xl border border-gray-800/60 hover:border-emerald-500/30 transition-all group"
             >
               <div 
-                onClick={() => toggleTask(task.id)}
+                onClick={() => {
+                   const nextStatus = task.status === 'needsAction' ? 'inProgress' : task.status === 'inProgress' ? 'completed' : 'needsAction';
+                   toggleTask(task.id, nextStatus);
+                }}
                 className="flex items-center gap-3 cursor-pointer flex-1 min-w-0"
               >
                 {task.status === 'completed' ? (
                   <CheckCircle2 className="text-emerald-400 shrink-0" size={16}/> 
+                ) : task.status === 'inProgress' ? (
+                  <RefreshCw className="text-amber-400 shrink-0" size={16}/>
                 ) : (
                   <Circle className="text-gray-600 group-hover:text-emerald-400/70 shrink-0" size={16}/>
                 )}
-                <span className={`text-xs font-semibold truncate ${task.status === 'completed' ? 'text-gray-500 line-through' : 'text-gray-200'}`}>
+                <span className={`text-xs font-semibold truncate ${task.status === 'completed' ? 'text-gray-500 line-through' : task.status === 'inProgress' ? 'text-amber-400' : 'text-gray-200'}`}>
                   {task.title}
                 </span>
               </div>
