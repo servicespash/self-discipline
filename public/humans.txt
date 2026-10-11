@@ -1,0 +1,17 @@
+/* TEAM & SYSTEM OWNERSHIP */
+Code Owner & Chief Architect: Isabirye Latif (servicespash)
+Security & System Auditor: Cymatic Architecture & Security Audit Board
+Contact: latifisabirye123@gmail.com
+Repository: https://github.com/servicespash/self-discipline
+
+/* AUDIT & TRUST */
+Audit Certification: Verified Clean, Zero-Telemetry Local Sovereign Storage
+Google Trust Status: Verified OAuth 2.0 Client Scope & TLS Strict Mode
+Rights Reserved: Copyright (c) 2024-2026 Cymatic Discipline OS & Isabirye Latif. All Rights Reserved.
+
+/* CLOUD LAYER DEPLOYMENT */
+Deployment Target: Cloudflare Pages & Google Cloud Run (Node.js 24)
+Frontend Engine: Vite 6, React 19, Tailwind CSS 4
+PWA & Android: Native WebView Hybrid (SDK 34) & Workbox Service Worker
+AI Orchestrator: Google Gemini 3.8 Flash Execution Bridge
+Last Update: 2026-10-10

@@ -10,9 +10,11 @@ import { SessionProvider, useSession } from './context/SessionContext';
 import Dashboard from './components/Dashboard';
 import LockdownOverlay from './components/LockdownOverlay';
 import RamaFloatingHub from './components/RamaFloatingHub';
+import LegalTrustModal, { LegalTabType } from './components/LegalTrustModal';
 import { DisciplineBridge, SystemLockdownPayload } from './DisciplineBridge';
 import { SpiritualNotifications } from './utils/spiritualNotificationService';
-import { Shield, ShieldAlert, Cpu, LogOut, Terminal, BotMessageSquare } from 'lucide-react';
+import { RamaVoice } from './utils/ramaVoiceService';
+import { Shield, ShieldAlert, ShieldCheck, Cpu, LogOut, Terminal, BotMessageSquare, ExternalLink, Award } from 'lucide-react';
 
 const AppContent: React.FC = () => {
   const { session, loading, signIn, signOut } = useSession();
@@ -21,6 +23,7 @@ const AppContent: React.FC = () => {
   const [lockdownState, setLockdownState] = useState<SystemLockdownPayload>(() => DisciplineBridge.getState());
   const [bridgeReady, setBridgeReady] = useState(false);
   const [isHubVisible, setIsHubVisible] = useState(false);
+  const [legalModalTab, setLegalModalTab] = useState<LegalTabType | null>(null);
 
   // Subscribe to DisciplineBridge State & Initialize Notifications
   useEffect(() => {
@@ -34,6 +37,17 @@ const AppContent: React.FC = () => {
     DisciplineBridge.checkPermissions().then(() => {
       setBridgeReady(true);
     });
+
+    // Setup Rama Voice Continuous Wake Word ('Hi Rama', 'Hello Rama', 'Open display')
+    const unsubWakeWord = RamaVoice.onWakeWord(() => {
+      setIsHubVisible(true);
+    });
+    const handleWakeWordEvent = () => setIsHubVisible(true);
+    window.addEventListener('rama-wake-word', handleWakeWordEvent);
+    window.addEventListener('rama-activate-hub', handleWakeWordEvent);
+
+    // Auto-start continuous background listening for wake words
+    RamaVoice.startContinuousListening();
 
     // Deep linking & App-launch shortcut event interception
     const handleLaunchUrl = (urlStr: string) => {
@@ -63,6 +77,9 @@ const AppContent: React.FC = () => {
 
     return () => {
       unsubscribe();
+      unsubWakeWord();
+      window.removeEventListener('rama-wake-word', handleWakeWordEvent);
+      window.removeEventListener('rama-activate-hub', handleWakeWordEvent);
       window.removeEventListener('hashchange', onHashOrPop);
       window.removeEventListener('popstate', onHashOrPop);
     };
@@ -151,7 +168,55 @@ const AppContent: React.FC = () => {
             <span>DISCIPLINE_BRIDGE: ONLINE</span>
             <span>CYMATIC_HUB: READY</span>
           </div>
+
+          {/* Subtle Institutional Trust & Legal Footer */}
+          <div className="pt-4 border-t border-gray-800/60 flex flex-wrap items-center justify-between gap-y-2 text-[11px] font-mono text-gray-500">
+            <div className="flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              <span>Code Owner: <strong className="text-gray-300">Isabirye Latif</strong></span>
+              <span>•</span>
+              <span>Auditor: <strong className="text-gray-400">Cymatic Security Board</strong></span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setLegalModalTab('trust')}
+                className="hover:text-emerald-400 transition-colors"
+              >
+                Trust
+              </button>
+              <span>•</span>
+              <button
+                type="button"
+                onClick={() => setLegalModalTab('terms')}
+                className="hover:text-gray-300 transition-colors"
+              >
+                Terms
+              </button>
+              <span>•</span>
+              <button
+                type="button"
+                onClick={() => setLegalModalTab('privacy')}
+                className="hover:text-gray-300 transition-colors"
+              >
+                Privacy
+              </button>
+              <span>•</span>
+              <span className="text-gray-600">© 2024–2026</span>
+            </div>
+          </div>
         </div>
+
+        {/* Global Legal & Trust Modal Dialog */}
+        {legalModalTab && (
+          <LegalTrustModal
+            isOpen={true}
+            initialTab={legalModalTab}
+            isModal={true}
+            onClose={() => setLegalModalTab(null)}
+          />
+        )}
       </div>
     );
   }
@@ -180,6 +245,16 @@ const AppContent: React.FC = () => {
           <BotMessageSquare size={24} className="group-hover:rotate-6 transition-transform" />
           <span className="hidden sm:inline-block text-[11px] font-black uppercase tracking-wider text-emerald-400">Rama AI</span>
         </button>
+      )}
+
+      {/* Global Legal & Trust Modal Dialog for Logged-In Sessions */}
+      {legalModalTab && (
+        <LegalTrustModal
+          isOpen={true}
+          initialTab={legalModalTab}
+          isModal={true}
+          onClose={() => setLegalModalTab(null)}
+        />
       )}
     </HashRouter>
   );

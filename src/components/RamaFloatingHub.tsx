@@ -23,6 +23,7 @@ import {
   Download,
   Copy,
   Check,
+  CheckCircle2,
   Brain,
   Mail,
   ExternalLink,
@@ -40,7 +41,13 @@ import {
   ChevronDown,
   ShieldCheck,
   Printer,
-  Sparkle
+  Sparkle,
+  Mic,
+  MicOff,
+  Volume2,
+  VolumeX,
+  Compass,
+  Navigation
 } from 'lucide-react';
 import { DisciplineBridge, SystemLockdownPayload } from '../DisciplineBridge';
 import { LocalUserSession } from '../types/session';
@@ -50,6 +57,8 @@ import {
   Message
 } from '../utils/ConversationManager';
 import { exportSummaryAsPdf } from '../utils/pdfExport';
+import { RamaActionEngine, RamaActionResult } from '../utils/ramaActionEngine';
+import { RamaVoice, RamaVoiceState } from '../utils/ramaVoiceService';
 
 interface RamaProps {
   context?: string;
@@ -91,6 +100,11 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Voice Listening & Audio TTS State
+  const [voiceState, setVoiceState] = useState<RamaVoiceState>(() => RamaVoice.getState());
+  const [enableTts, setEnableTts] = useState<boolean>(true);
+  const [lastActionResult, setLastActionResult] = useState<RamaActionResult | null>(null);
 
   // Context Management State via ConversationManager
   const [sessions, setSessions] = useState<ChatSession[]>(() => {
@@ -172,6 +186,22 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
     });
     return () => unsubscribe();
   }, []);
+
+  // Subscribe to RamaVoice state & voice command transcripts
+  useEffect(() => {
+    const unsubVoice = RamaVoice.subscribe((s) => {
+      setVoiceState(s);
+    });
+
+    const unsubCommand = RamaVoice.onCommand((command) => {
+      handleSendMessage(command);
+    });
+
+    return () => {
+      unsubVoice();
+      unsubCommand();
+    };
+  }, [activeSessionId, sessions, userMoniker]);
 
   // Close export dropdown when clicking outside
   useEffect(() => {
@@ -362,6 +392,33 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
     setIsError(false);
     setErrorMessage('');
 
+    // 1. Direct System Action Execution Check (Qibla, Task 6, Lockdown, Google Sync, Displays)
+    const actionResult = await RamaActionEngine.parseAndExecute(query);
+    if (actionResult) {
+      setLastActionResult(actionResult);
+      const actionText = `🎯 **[ACTION EXECUTED // ${actionResult.title}]**\n\n${actionResult.summary}`;
+      const assistantMsg: Message = {
+        id: `ast-${Date.now()}`,
+        role: 'assistant',
+        text: actionText,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
+
+      const finalMessages = [...newMessages, assistantMsg];
+      const finalizedSessions = ConversationManager.updateSessionMessages(
+        activeSessionId,
+        finalMessages,
+        updatedSessions
+      );
+      setSessions(finalizedSessions);
+
+      if (enableTts) {
+        RamaVoice.speak(actionResult.summary);
+      }
+      setIsLoading(false);
+      return;
+    }
+
     const userContext = getSystemSnapshot();
     const pastSessionsContext = ConversationManager.generatePastSessionsOverview(
       sessions,
@@ -388,11 +445,12 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
         throw new Error(`Server returned HTTP ${res.status}`);
       }
       const data = await res.json();
+      const replyText = data.message || data.text || 'Directive acknowledged.';
 
       const assistantMsg: Message = {
         id: `ast-${Date.now()}`,
         role: 'assistant',
-        text: data.message || data.text || 'Directive acknowledged.',
+        text: replyText,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
 
@@ -403,6 +461,13 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
         updatedSessions
       );
       setSessions(finalizedSessions);
+
+      if (enableTts) {
+        const firstSentence = replyText.split(/[.!?]/)[0];
+        if (firstSentence && firstSentence.length > 5) {
+          RamaVoice.speak(firstSentence + '.');
+        }
+      }
 
       // Check if periodic summary should trigger after this exchange
       const updatedCurrentSession = finalizedSessions.find((s) => s.id === activeSessionId) || {
@@ -1168,14 +1233,110 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
                 <div ref={chatBottomRef} />
               </div>
 
-              {/* Input Bar */}
+              {/* Quick Action Chips & Voice Listening Status */}
+              <div className="no-drag px-3 pt-2 pb-1 bg-gray-900/90 border-t border-gray-800/80 space-y-1.5">
+                {/* Live Speech Transcript / Wake Word Status Banner */}
+                {voiceState.isListening && (
+                  <div className="flex items-center justify-between px-2.5 py-1 bg-emerald-950/60 border border-emerald-500/30 rounded-xl text-[10px] text-emerald-300 animate-pulse">
+                    <div className="flex items-center gap-1.5 truncate">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping shrink-0" />
+                      <span className="font-mono font-bold truncate">
+                        {voiceState.transcript ? `"${voiceState.transcript}"` : 'Listening... Say "Hi Rama", "Locate Qibla", "Task 6", or "Open display"'}
+                      </span>
+                    </div>
+                    <span className="text-[9px] uppercase font-bold text-emerald-400/80 shrink-0 ml-2">
+                      Wake Word Active
+                    </span>
+                  </div>
+                )}
+
+                {/* Quick Action Chips Row */}
+                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+                  <button
+                    type="button"
+                    onClick={() => handleSendMessage('Locate Qibla')}
+                    className="px-2.5 py-1 rounded-xl bg-gray-950 hover:bg-emerald-950/60 text-gray-300 hover:text-emerald-300 border border-gray-800 hover:border-emerald-500/40 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 transition-all shrink-0 cursor-pointer"
+                  >
+                    <Compass size={11} className="text-emerald-400 pointer-events-none" />
+                    <span>Locate Qibla</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSendMessage('Add Task 6: System Lockdown & Architecture Verification')}
+                    className="px-2.5 py-1 rounded-xl bg-gray-950 hover:bg-emerald-950/60 text-gray-300 hover:text-emerald-300 border border-gray-800 hover:border-emerald-500/40 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 transition-all shrink-0 cursor-pointer"
+                  >
+                    <CheckCircle2 size={11} className="text-emerald-400 pointer-events-none" />
+                    <span>Task 6 Protocol</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSendMessage('Engage Lockdown for 30 minutes')}
+                    className="px-2.5 py-1 rounded-xl bg-gray-950 hover:bg-emerald-950/60 text-gray-300 hover:text-emerald-300 border border-gray-800 hover:border-emerald-500/40 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 transition-all shrink-0 cursor-pointer"
+                  >
+                    <ShieldCheck size={11} className="text-emerald-400 pointer-events-none" />
+                    <span>Lockdown 30m</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSendMessage('Sync Google Calendar')}
+                    className="px-2.5 py-1 rounded-xl bg-gray-950 hover:bg-emerald-950/60 text-gray-300 hover:text-emerald-300 border border-gray-800 hover:border-emerald-500/40 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 transition-all shrink-0 cursor-pointer"
+                  >
+                    <RefreshCw size={11} className="text-emerald-400 pointer-events-none" />
+                    <span>Google Sync</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSendMessage('Update Room Makeover desk clear')}
+                    className="px-2.5 py-1 rounded-xl bg-gray-950 hover:bg-emerald-950/60 text-gray-300 hover:text-emerald-300 border border-gray-800 hover:border-emerald-500/40 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 transition-all shrink-0 cursor-pointer"
+                  >
+                    <Layers size={11} className="text-emerald-400 pointer-events-none" />
+                    <span>Room Makeover</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSendMessage('Open prayer display')}
+                    className="px-2.5 py-1 rounded-xl bg-gray-950 hover:bg-emerald-950/60 text-gray-300 hover:text-emerald-300 border border-gray-800 hover:border-emerald-500/40 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 transition-all shrink-0 cursor-pointer"
+                  >
+                    <Navigation size={11} className="text-emerald-400 pointer-events-none" />
+                    <span>Open Display</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Input Bar with Mic & Speaker Toggles */}
               <div className="no-drag p-3 bg-gray-900/80 border-t border-gray-800 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => RamaVoice.toggleListening()}
+                  title={voiceState.isListening ? 'Pause Voice Listening' : 'Start Voice Listening (Wake word "Hi Rama" / "Open display")'}
+                  className={`p-2.5 rounded-xl border transition-all flex items-center justify-center shrink-0 cursor-pointer ${
+                    voiceState.isListening
+                      ? 'bg-emerald-600 text-gray-950 border-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.5)]'
+                      : 'bg-gray-950 text-gray-400 hover:text-white border-gray-800 hover:border-gray-700'
+                  }`}
+                >
+                  {voiceState.isListening ? <Mic size={15} className="animate-pulse pointer-events-none" /> : <MicOff size={15} className="pointer-events-none" />}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setEnableTts(!enableTts)}
+                  title={enableTts ? 'Mute Rama Voice Output' : 'Enable Rama Voice Output'}
+                  className={`p-2.5 rounded-xl border transition-all flex items-center justify-center shrink-0 cursor-pointer ${
+                    enableTts
+                      ? 'bg-gray-950 text-emerald-400 border-gray-800 hover:border-emerald-500/30'
+                      : 'bg-gray-950 text-gray-600 border-gray-800'
+                  }`}
+                >
+                  {enableTts ? <Volume2 size={15} className="pointer-events-none" /> : <VolumeX size={15} className="pointer-events-none" />}
+                </button>
+
                 <input
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
                   disabled={isLoading}
-                  placeholder={`Consult Rama... (Context synced with ${userMoniker.split(' ')[0]})`}
+                  placeholder={`Consult Rama or speak "Hi Rama", "Locate Qibla", "Task 6"...`}
                   className="flex-1 bg-gray-950 border border-gray-800 focus:border-emerald-500 text-xs text-white placeholder-gray-500 rounded-xl px-3.5 py-2.5 outline-none transition-all disabled:opacity-50 font-sans"
                 />
                 <button

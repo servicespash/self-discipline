@@ -47,6 +47,7 @@ export const SessionProvider: React.FC<{ children: ReactNode }> = ({ children })
     setSession(null);
     try {
       localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem('sdc_locked_spiritual_tradition');
     } catch (e) {
       console.error('[SessionContext] Failed to purge session:', e);
     }

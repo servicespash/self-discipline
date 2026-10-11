@@ -1,0 +1,9 @@
+# RFC 9116 Security Disclosure & Google Trust Verification
+Contact: mailto:latifisabirye123@gmail.com
+Expires: 2027-12-31T23:59:59.000Z
+Preferred-Languages: en
+Canonical: https://ais-pre-b5g6a25akhdesxfhq7pi52-802444804246.europe-west2.run.app/.well-known/security.txt
+Policy: https://ais-pre-b5g6a25akhdesxfhq7pi52-802444804246.europe-west2.run.app/#/privacy
+Acknowledgments: https://github.com/servicespash/self-discipline
+Auditor: Cymatic Security & Architecture Audit Board
+Author: Isabirye Latif (Solo Architect)

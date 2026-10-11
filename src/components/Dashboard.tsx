@@ -15,11 +15,13 @@ import CalendarWidget from './CalendarWidget';
 import WalletDiscipline from './WalletDiscipline';
 import RoomMakeover from './RoomMakeover';
 import PrayerDiscipline from './PrayerDiscipline';
+import QiblaCompass from './QiblaCompass';
 import LockdownSettings from './LockdownSettings';
 import RealCalendarIntegration from './RealCalendarIntegration';
 import RealCalendarRoom from './RealCalendarRoom';
 import CalendarManager from './CalendarManager';
 import PWAInstallBanner from './PWAInstallBanner';
+import LegalTrustModal from './LegalTrustModal';
 import { DisciplineBridge, SystemLockdownPayload } from '../DisciplineBridge';
 
 import { 
@@ -29,6 +31,7 @@ import {
   LogOut, 
   Shield, 
   ShieldAlert, 
+  ShieldCheck,
   Settings, 
   Wifi,
   WifiOff,
@@ -39,8 +42,11 @@ import {
   Home,
   Monitor,
   HeartPulse,
+  Compass,
   Lock,
-  Sparkles
+  Sparkles,
+  ExternalLink,
+  Award
 } from 'lucide-react';
 
 const STORAGE_KEY = 'sdc_universal_discipline_matrix_v2';
@@ -80,6 +86,12 @@ export default function Dashboard({ accessToken }: { accessToken: string | null 
       case '/makeover': return 'Room Makeover';
       case '/rio': return 'Google Sync';
       case '/settings': return 'Protocols';
+      case '/trust': return 'Google Trust & Audit';
+      case '/author': return 'Author & Ideologist Dossier';
+      case '/terms': return 'Terms & Conditions';
+      case '/privacy': return 'Privacy Policy';
+      case '/cloud': return 'Cloud Layer Deployment';
+      case '/legal': return 'Legal & Rights Reserved';
       default: return 'Cymatic OS';
     }
   };
@@ -151,8 +163,8 @@ export default function Dashboard({ accessToken }: { accessToken: string | null 
   return (
       <div className="flex min-h-screen bg-gray-950 text-gray-100 font-sans selection:bg-emerald-500/30">
         {/* Sidebar */}
-        <aside className={`${isMobileMenuOpen ? 'fixed' : 'hidden'} md:static w-72 border-r border-gray-800/50 flex flex-col bg-gray-950/95 backdrop-blur-3xl inset-y-0 left-0 z-50 md:flex shadow-2xl`}>
-          <div className="p-6">
+        <aside className={`${isMobileMenuOpen ? 'fixed' : 'hidden'} md:static w-72 border-r border-gray-800/50 flex flex-col justify-between bg-gray-950/95 backdrop-blur-3xl inset-y-0 left-0 z-50 md:flex shadow-2xl`}>
+          <div className="p-6 overflow-y-auto">
             <div className="flex items-center justify-between mb-8 md:hidden">
               <button className="text-gray-400" onClick={() => setIsMobileMenuOpen(false)}><X size={20} /></button>
             </div>
@@ -165,7 +177,33 @@ export default function Dashboard({ accessToken }: { accessToken: string | null 
               <NavItem to="/makeover" icon={Monitor} label="Room Makeover" />
               <NavItem to="/rio" icon={Sparkles} label="Real Google Sync" />
               <NavItem to="/settings" icon={Lock} label="Lockdown Protocols" />
+              <NavItem to="/trust" icon={ShieldCheck} label="Trust & Legal Hub" />
             </nav>
+          </div>
+
+          {/* Sidebar Clean Legal & Trust Attribution */}
+          <div className="p-3.5 m-3 bg-gray-900/50 border border-gray-800/80 rounded-2xl space-y-2">
+            <div className="flex items-center justify-between text-[11px] font-mono">
+              <span className="text-gray-300 font-bold">Isabirye Latif</span>
+              <span className="text-[9px] text-emerald-400">CODE OWNER</span>
+            </div>
+            <div className="text-[10px] text-gray-500 font-mono">
+              Auditor: <span className="text-gray-400">Cymatic Security Board</span>
+            </div>
+
+            <div className="pt-2 border-t border-gray-800/60 flex items-center justify-between text-[10px] font-mono text-gray-500">
+              <NavLink to="/terms" onClick={() => setIsMobileMenuOpen(false)} className="hover:text-gray-300 transition-colors">
+                Terms
+              </NavLink>
+              <span>•</span>
+              <NavLink to="/privacy" onClick={() => setIsMobileMenuOpen(false)} className="hover:text-gray-300 transition-colors">
+                Privacy
+              </NavLink>
+              <span>•</span>
+              <NavLink to="/cloud" onClick={() => setIsMobileMenuOpen(false)} className="hover:text-emerald-400 transition-colors">
+                Cloudflare
+              </NavLink>
+            </div>
           </div>
         </aside>
 
@@ -265,6 +303,12 @@ export default function Dashboard({ accessToken }: { accessToken: string | null 
              <Route path="/makeover" element={<div className="p-8 max-w-4xl mx-auto"><RoomMakeover /></div>} />
              <Route path="/rio" element={<div className="p-8 max-w-4xl mx-auto"><RealCalendarIntegration /></div>} />
              <Route path="/settings" element={<div className="p-8 max-w-4xl mx-auto"><LockdownSettings /></div>} />
+             <Route path="/trust" element={<div className="p-4 sm:p-8 max-w-5xl mx-auto w-full"><LegalTrustModal initialTab="trust" /></div>} />
+             <Route path="/author" element={<div className="p-4 sm:p-8 max-w-5xl mx-auto w-full"><LegalTrustModal initialTab="author" /></div>} />
+             <Route path="/terms" element={<div className="p-4 sm:p-8 max-w-5xl mx-auto w-full"><LegalTrustModal initialTab="terms" /></div>} />
+             <Route path="/privacy" element={<div className="p-4 sm:p-8 max-w-5xl mx-auto w-full"><LegalTrustModal initialTab="privacy" /></div>} />
+             <Route path="/cloud" element={<div className="p-4 sm:p-8 max-w-5xl mx-auto w-full"><LegalTrustModal initialTab="cloud" /></div>} />
+             <Route path="/legal" element={<div className="p-4 sm:p-8 max-w-5xl mx-auto w-full"><LegalTrustModal initialTab="author" /></div>} />
            </Routes>
         </main>
       </div>
