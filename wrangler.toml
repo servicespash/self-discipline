@@ -1,5 +1,6 @@
 # Cloudflare Pages Deployment Configuration
 name = "cymatic-discipline-os"
 compatibility_date = "2026-10-05"
-pages_build_output_dir = "dist"
-route = { pattern = "discipline.cymatichub.xyz/*", zone_name = "cymatichub.xyz" }
+
+[pages_build_output_dir]
+directory = "dist"

@@ -548,7 +548,7 @@ export const LegalTrustModal: React.FC<LegalTrustProps> = ({
                 <span className="text-emerald-400 text-[10px]">HTTP/2 TLS 1.3</span>
               </div>
               <div className="p-3 bg-gray-950 rounded-xl border border-gray-800 text-gray-300 break-all select-all">
-                https://ais-pre-b5g6a25akhdesxfhq7pi52-802444804246.europe-west2.run.app
+                https://discipline.cymatichub.xyz
               </div>
             </div>
           </div>

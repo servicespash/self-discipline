@@ -1,5 +1,5 @@
 # Robust Robots.txt for Cymatic Discipline OS
-# Host: https://ais-pre-b5g6a25akhdesxfhq7pi52-802444804246.europe-west2.run.app
+# Host: https://discipline.cymatichub.xyz
 # Code Owner & Architect: Isabirye Latif
 # Repository: https://github.com/servicespash/self-discipline
 
@@ -50,5 +50,5 @@ Disallow: /_/
 Crawl-delay: 1
 
 # Robust Sitemap Index
-Sitemap: https://ais-pre-b5g6a25akhdesxfhq7pi52-802444804246.europe-west2.run.app/sitemap.xml
+Sitemap: https://discipline.cymatichub.xyz/sitemap.xml
 Sitemap: /sitemap.xml
