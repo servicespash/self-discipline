@@ -4,11 +4,13 @@ service cloud.firestore {
     match /{document=**} {
       allow read, write: if false;
     }
-    match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-      match /goals/{goalId} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
-      }
+
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    match /licenses/{licenseKey} {
+      allow read, write: if true; // Public read & write so incoming visitors can resolve and track referral propagation
     }
   }
 }

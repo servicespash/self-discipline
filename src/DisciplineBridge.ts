@@ -4,12 +4,36 @@
  * Event-Driven Production DisciplineBridge - Native OS Intent Interceptor
  */
 
+export interface DeviceAppRecord {
+  id: string; // Android package name e.g. com.instagram.android
+  name: string; // App label e.g. Instagram
+  category: 'social' | 'entertainment' | 'messaging' | 'productivity' | 'system';
+  dopamineLevel: 'extreme' | 'high' | 'moderate' | 'low' | 'neutral';
+  isSystem?: boolean;
+  defaultRestricted?: boolean;
+}
+
+export const SOCIAL_MEDIA_PACKAGES: string[] = [
+  'com.whatsapp',
+  'com.instagram.android',
+  'com.zhiliaoapp.musically', // TikTok
+  'com.twitter.android',
+  'com.facebook.katana',
+  'com.snapchat.android',
+  'com.reddit.frontpage',
+  'com.google.android.youtube',
+  'com.pinterest'
+];
+
+export const DEFAULT_DEVICE_APPS: DeviceAppRecord[] = [];
+
 export interface SystemLockdownPayload {
   active: boolean;
   durationMinutes: number;
   endTime: number;
   restrictedPackages: string[];
   whitelistedPackages: string[];
+  allowedSocialPackage?: string | null;
 }
 
 class DisciplineBridgeEngine {
@@ -47,7 +71,6 @@ class DisciplineBridgeEngine {
 
   public on(event: 'lockdownChange', listener: (payload: SystemLockdownPayload) => void) {
     this.events[event].push(listener);
-    listener(this.lockdownState);
   }
 
   private loadPersistedState() {
@@ -109,20 +132,41 @@ class DisciplineBridgeEngine {
     }
   }
 
-  public async initiateLockdown(durationMinutes: number, packagesCsv?: string): Promise<SystemLockdownPayload> {
+  public isSocialMediaPackage(packageId: string): boolean {
+    return SOCIAL_MEDIA_PACKAGES.includes(packageId);
+  }
+
+  public async initiateLockdown(
+    durationMinutes: number, 
+    packagesCsv?: string,
+    allowedSocialPkg?: string | null
+  ): Promise<SystemLockdownPayload> {
     const now = Date.now();
     const endTime = now + durationMinutes * 60 * 1000;
-    const restricted = packagesCsv ? packagesCsv.split(',').map(s => s.trim()).filter(Boolean) : ['com.whatsapp', 'com.instagram.android'];
+    let restricted = packagesCsv ? packagesCsv.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+    // If a specific social app is allowed, ensure it's not in the restricted list
+    if (allowedSocialPkg) {
+      restricted = restricted.filter(p => p !== allowedSocialPkg);
+    }
 
     this.lockdownState = {
       active: true,
       durationMinutes,
       endTime,
       restrictedPackages: restricted,
-      whitelistedPackages: ['com.android.dialer']
+      whitelistedPackages: allowedSocialPkg ? [allowedSocialPkg] : [],
+      allowedSocialPackage: allowedSocialPkg || null
     };
 
     this.saveState();
+    
+    // Activate VPN and system lockdown
+    if (typeof window !== 'undefined' && (window as any).Capacitor?.isPluginAvailable('DisciplineNative')) {
+      const plugin = (window as any).Capacitor.Plugins.DisciplineNative;
+      await plugin.startVpnTunnel();
+    }
+    
     return this.lockdownState;
   }
 
@@ -141,6 +185,48 @@ class DisciplineBridgeEngine {
       }
     }
     return true;
+  }
+
+  public async fetchInstalledApps(): Promise<DeviceAppRecord[]> {
+    if (typeof window !== 'undefined' && (window as any).Capacitor?.isPluginAvailable('DisciplineNative')) {
+      try {
+        const result = await (window as any).Capacitor.Plugins.DisciplineNative.fetchInstalledApps();
+        const parsed = JSON.parse(result).map((app: any) => ({
+          id: app.packageName,
+          name: app.name,
+          category: SOCIAL_MEDIA_PACKAGES.includes(app.packageName) ? 'social' : 'productivity',
+          dopamineLevel: SOCIAL_MEDIA_PACKAGES.includes(app.packageName) ? 'extreme' : 'low'
+        }));
+        if (parsed.length > 0) {
+          return parsed;
+        }
+      } catch (e) {
+        console.error('[DisciplineBridge] Native app fetch fallback active:', e);
+      }
+    }
+
+    // Load persisted real user configured package registry
+    try {
+      const saved = localStorage.getItem('sdc_user_configured_packages_v1') || localStorage.getItem('sdc_user_configured_apps_v1');
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (e) {
+      console.warn('[DisciplineBridge] Configured packages load fallback:', e);
+    }
+
+    return DEFAULT_DEVICE_APPS;
+  }
+
+  public async registerCustomPackage(pkg: DeviceAppRecord): Promise<DeviceAppRecord[]> {
+    const existing = await this.fetchInstalledApps();
+    const updated = [pkg, ...existing.filter(a => a.id !== pkg.id)];
+    try {
+      localStorage.setItem('sdc_user_configured_packages_v1', JSON.stringify(updated));
+    } catch (e) {
+      console.error('[DisciplineBridge] Failed to save package:', e);
+    }
+    return updated;
   }
 
   public getState(): SystemLockdownPayload {

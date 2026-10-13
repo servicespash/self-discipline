@@ -1,13 +1,9 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- * Universal Discipline OS Command Center - Responsive Grid Layout
- */
-
-import React, { useState, useEffect, useMemo } from 'react';
-import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useSession } from '../context/SessionContext';
-import { UniversalDisciplineState } from '../types/discipline';
+import { Layout } from './ui/Layout';
+import { Sidebar } from './dashboard/Sidebar';
+import { Header } from './dashboard/Header';
 
 // Internal Components
 import TaskWidget from './TaskWidget';
@@ -15,77 +11,57 @@ import CalendarWidget from './CalendarWidget';
 import WalletDiscipline from './WalletDiscipline';
 import RoomMakeover from './RoomMakeover';
 import PrayerDiscipline from './PrayerDiscipline';
-import QiblaCompass from './QiblaCompass';
-import LockdownSettings from './LockdownSettings';
+import WellbeingAndMonitoringHub from './WellbeingManager';
+import LockdownProtocols from './LockdownProtocols';
+import AppAuthority from './AppAuthority';
+import FocusVpnManager from './FocusVpnManager';
+import ResellerManager from './ResellerManager';
 import RealCalendarIntegration from './RealCalendarIntegration';
-import RealCalendarRoom from './RealCalendarRoom';
 import CalendarManager from './CalendarManager';
 import PWAInstallBanner from './PWAInstallBanner';
 import LegalTrustModal from './LegalTrustModal';
 import { DisciplineBridge, SystemLockdownPayload } from '../DisciplineBridge';
-
-import { 
-  Wallet, 
-  CalendarDays, 
-  CheckSquare, 
-  LogOut, 
-  Shield, 
-  ShieldAlert, 
-  ShieldCheck,
-  Settings, 
-  Wifi,
-  WifiOff,
-  DollarSign,
-  Target,
-  Menu,
-  X,
-  Home,
-  Monitor,
-  HeartPulse,
-  Compass,
-  Lock,
-  Sparkles,
-  ExternalLink,
-  Award
-} from 'lucide-react';
-
-const STORAGE_KEY = 'sdc_universal_discipline_matrix_v2';
-
-const INITIAL_STATE: UniversalDisciplineState = {
-  capital: {
-    currencySymbol: '$',
-    totalBudget: 0,
-    entries: []
-  },
-  customGoals: [],
-  dailyRoutines: [],
-  lastUpdated: Date.now()
-};
-
-// Helper to get initials (e.g., "Lucky Adams" -> "LA")
-const getInitials = (name: string) => {
-  if (!name) return 'SO';
-  return name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
-};
+import { ProfileManagement } from './ProfileManagement';
+import { getOriginatingUserLicenses, triggerNativeReferralShare } from '../utils/licensing';
 
 export default function Dashboard({ accessToken }: { accessToken: string | null }) {
-  const { session, signOut } = useSession();
+  const { session } = useSession();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
   const [lockdownState, setLockdownState] = useState<SystemLockdownPayload>(() => DisciplineBridge.getState());
   const [timeRemaining, setTimeRemaining] = useState<number>(0);
+  const [shareToast, setShareToast] = useState<string | null>(null);
   const location = useLocation();
+
+  const handleQuickNativeShare = async () => {
+    if (!session) return;
+    try {
+      const licenses = await getOriginatingUserLicenses(session.uid, session.email, session.moniker);
+      const code = licenses[0]?.referralCode;
+      if (!code) return;
+      const res = await triggerNativeReferralShare(code, session.moniker);
+      setShareToast(res.message);
+      setTimeout(() => setShareToast(null), 3500);
+    } catch (err) {
+      console.warn('[Dashboard] Quick share error:', err);
+    }
+  };
 
   const getTitle = () => {
     switch(location.pathname) {
-      case '/dashboard': return 'Neural Core Command';
+      case '/dashboard': return 'Core Hub';
+      case '/apps': return 'App Authority';
+      case '/settings': return 'Lockdown Protocols';
       case '/tasks': return 'Task Manager';
       case '/calendar': return 'Real Calendar Grid';
       case '/wallet': return 'Capital Tracker';
       case '/prayer': return 'Prayer Discipline';
       case '/makeover': return 'Room Makeover';
       case '/rio': return 'Google Sync';
-      case '/settings': return 'Protocols';
+      case '/focus': return 'Focus & VPN Firewall';
+      case '/reseller': return 'Referrals & Team Seats';
+      case '/wellbeing': return 'Wellbeing Manager';
       case '/trust': return 'Google Trust & Audit';
       case '/author': return 'Author & Ideologist Dossier';
       case '/terms': return 'Terms & Conditions';
@@ -107,7 +83,6 @@ export default function Dashboard({ accessToken }: { accessToken: string | null 
     };
   }, []);
 
-  // Subscribe to DisciplineBridge State
   useEffect(() => {
     const unsubscribe = DisciplineBridge.subscribe((state) => {
       setLockdownState(state);
@@ -115,7 +90,6 @@ export default function Dashboard({ accessToken }: { accessToken: string | null 
     return () => unsubscribe();
   }, []);
 
-  // Lockdown countdown ticker
   useEffect(() => {
     if (!lockdownState.active) {
       setTimeRemaining(0);
@@ -140,178 +114,64 @@ export default function Dashboard({ accessToken }: { accessToken: string | null 
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
-  const NavItem = ({ to, icon: Icon, label }: { to: string; icon: any; label: string }) => (
-    <NavLink
-      to={to}
-      onClick={() => setIsMobileMenuOpen(false)}
-      className={({ isActive }) => `w-full flex items-center gap-3 p-3.5 rounded-2xl transition-all border group relative ${
-        isActive
-          ? 'bg-emerald-600/10 text-emerald-400 border-emerald-500/20 shadow-[0_0_20px_rgba(16,185,129,0.1)]'
-          : 'text-gray-500 hover:text-gray-300 hover:bg-gray-900/50 border-transparent'
-      }`}
-    >
-      {({ isActive }) => (
-        <>
-          {isActive && <div className="absolute left-0 w-1 h-6 bg-emerald-500 rounded-full" />}
-          <Icon size={18} className={isActive ? 'text-emerald-400' : 'group-hover:text-emerald-400/70 transition-colors'} />
-          <span className="font-black uppercase tracking-widest text-[10px]">{label}</span>
-        </>
-      )}
-    </NavLink>
-  );
-
   return (
-      <div className="flex min-h-screen bg-gray-950 text-gray-100 font-sans selection:bg-emerald-500/30">
-        {/* Sidebar */}
-        <aside className={`${isMobileMenuOpen ? 'fixed' : 'hidden'} md:static w-72 border-r border-gray-800/50 flex flex-col justify-between bg-gray-950/95 backdrop-blur-3xl inset-y-0 left-0 z-50 md:flex shadow-2xl`}>
-          <div className="p-6 overflow-y-auto">
-            <div className="flex items-center justify-between mb-8 md:hidden">
-              <button className="text-gray-400" onClick={() => setIsMobileMenuOpen(false)}><X size={20} /></button>
-            </div>
-            <nav className="space-y-1.5">
-              <NavItem to="/dashboard" icon={Home} label="Core Hub" />
-              <NavItem to="/tasks" icon={CheckSquare} label="Tasks" />
-              <NavItem to="/calendar" icon={CalendarDays} label="Calendar" />
-              <NavItem to="/wallet" icon={Wallet} label="Wallet" />
-              <NavItem to="/prayer" icon={HeartPulse} label="Prayer Discipline" />
-              <NavItem to="/makeover" icon={Monitor} label="Room Makeover" />
-              <NavItem to="/rio" icon={Sparkles} label="Real Google Sync" />
-              <NavItem to="/settings" icon={Lock} label="Lockdown Protocols" />
-              <NavItem to="/trust" icon={ShieldCheck} label="Trust & Legal Hub" />
-            </nav>
-          </div>
+      <div className="flex h-screen overflow-hidden bg-gray-950 text-gray-100 font-sans selection:bg-emerald-500/30 w-full max-w-full">
+        <Sidebar isMobileMenuOpen={isMobileMenuOpen} setIsMobileMenuOpen={setIsMobileMenuOpen} />
 
-          {/* Sidebar Clean Legal & Trust Attribution */}
-          <div className="p-3.5 m-3 bg-gray-900/50 border border-gray-800/80 rounded-2xl space-y-2">
-            <div className="flex items-center justify-between text-[11px] font-mono">
-              <span className="text-gray-300 font-bold">Isabirye Latif</span>
-              <span className="text-[9px] text-emerald-400">CODE OWNER</span>
-            </div>
-            <div className="text-[10px] text-gray-500 font-mono">
-              Auditor: <span className="text-gray-400">Cymatic Security Board</span>
-            </div>
-
-            <div className="pt-2 border-t border-gray-800/60 flex items-center justify-between text-[10px] font-mono text-gray-500">
-              <NavLink to="/terms" onClick={() => setIsMobileMenuOpen(false)} className="hover:text-gray-300 transition-colors">
-                Terms
-              </NavLink>
-              <span>•</span>
-              <NavLink to="/privacy" onClick={() => setIsMobileMenuOpen(false)} className="hover:text-gray-300 transition-colors">
-                Privacy
-              </NavLink>
-              <span>•</span>
-              <NavLink to="/cloud" onClick={() => setIsMobileMenuOpen(false)} className="hover:text-emerald-400 transition-colors">
-                Cloudflare
-              </NavLink>
-            </div>
-          </div>
-        </aside>
-
-        {/* Main Content */}
-        <main className="flex-1 min-w-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-emerald-900/10 via-gray-950 to-gray-950 flex flex-col h-screen overflow-y-auto">
-           {/* Top Navigation with Algorithmic Lockdown Control */}
-           <header className="sticky top-0 z-30 bg-gray-950/90 backdrop-blur-xl border-b border-gray-800/50 px-4 sm:px-6 py-2.5 flex justify-between items-center gap-3">
-              <div className="flex items-center gap-3">
-                <button className="md:hidden text-gray-400 hover:text-white p-1" onClick={() => setIsMobileMenuOpen(true)}>
-                  <Menu size={20} />
-                </button>
-                <h2 className="text-xs font-black text-white tracking-[0.2em] uppercase truncate max-w-[130px] sm:max-w-none">
-                  {getTitle()}
-                </h2>
-              </div>
-
-              {/* Top Algorithmic Lockdown Control Pill & Session Status */}
-              <div className="flex items-center gap-2 sm:gap-3">
-                {lockdownState.active ? (
-                  <div className="flex items-center gap-2 bg-red-950/50 border border-red-500/50 px-2.5 sm:px-3 py-1 rounded-full text-xs shadow-lg shadow-red-950/30">
-                    <span className="relative flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-                    </span>
-                    <span className="text-[10px] font-black uppercase tracking-wider text-red-300 flex items-center gap-1">
-                      <Lock size={11} className="text-red-400" />
-                      <span className="hidden sm:inline">ALGO LOCKED:</span>
-                    </span>
-                    <span className="font-mono font-black text-xs text-white bg-gray-950/90 px-2 py-0.5 rounded border border-red-500/30">
-                      {formatTimer(timeRemaining)}
-                    </span>
-                    <button
-                      onClick={() => DisciplineBridge.terminateLockdown()}
-                      className="px-2 py-0.5 bg-red-600 hover:bg-red-500 text-white font-black text-[9px] uppercase rounded-full transition-colors"
-                      title="Emergency Release Protocol"
-                    >
-                      Break
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-1 sm:gap-1.5 bg-gray-900/90 border border-gray-800 px-2 sm:px-3 py-1 rounded-full text-xs shadow-inner">
-                    <div className="flex items-center gap-1 text-[10px] font-black uppercase text-gray-400">
-                      <ShieldAlert size={12} className="text-emerald-400" />
-                      <span className="hidden md:inline">Algo Lock:</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      {[15, 30, 60].map(mins => (
-                        <button
-                          key={mins}
-                          onClick={() => DisciplineBridge.initiateLockdown(mins, 'com.whatsapp,com.instagram.android')}
-                          className="px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-black bg-gray-950 text-gray-400 hover:text-white hover:bg-gray-800 border border-gray-800/80 transition-all"
-                        >
-                          {mins}m
-                        </button>
-                      ))}
-                      <button
-                        onClick={() => DisciplineBridge.initiateLockdown(30, 'com.whatsapp,com.instagram.android')}
-                        className="px-2 sm:px-2.5 py-0.5 sm:py-1 bg-emerald-600 hover:bg-emerald-500 text-gray-950 font-black rounded-full text-[9px] uppercase tracking-wider transition-all flex items-center gap-1 shadow-md shadow-emerald-950/40"
-                      >
-                        <Lock size={10} /> Engage
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                <div className="hidden lg:flex items-center gap-1.5 bg-gray-900/80 px-2.5 py-1 rounded-full border border-gray-800 text-[10px] font-black uppercase">
-                  <span className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-                  <span className="text-gray-400">{isOnline ? 'Online' : 'Offline'}</span>
-                </div>
-
-                <div className="w-8 h-8 rounded-full bg-emerald-900/80 border border-emerald-500/40 flex items-center justify-center font-black text-emerald-400 text-xs shadow-lg shrink-0">
-                  {getInitials(session?.moniker || 'Architect')}
-                </div>
-              </div>
-           </header>
+        <main className="flex-1 min-w-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-emerald-900/10 via-gray-950 to-gray-950 flex flex-col h-screen overflow-hidden w-full max-w-full">
+           <Header 
+              title={getTitle()}
+              isOnline={isOnline}
+              lockdownActive={lockdownState.active}
+              timeRemaining={timeRemaining}
+              formatTimer={formatTimer}
+              onMenuClick={() => setIsMobileMenuOpen(true)}
+              onShareClick={handleQuickNativeShare}
+              onProfileClick={() => setIsProfileModalOpen(true)}
+              onTerminateLockdown={() => DisciplineBridge.terminateLockdown()}
+           />
            
-           {/* PWA In-App Install Prompt Banner */}
+           {shareToast && (
+             <div className="fixed top-14 right-6 z-50 px-4 py-2.5 bg-emerald-950/95 border border-emerald-500/50 rounded-2xl shadow-2xl text-emerald-300 text-xs font-mono font-bold flex items-center gap-2 animate-in fade-in">
+               <span>{shareToast}</span>
+             </div>
+           )}
+
            <PWAInstallBanner />
            
-           <Routes>
-             <Route path="/" element={<Navigate to="/dashboard" replace />} />
-             <Route path="/dashboard" element={
-               <div className="p-4 sm:p-8 max-w-[1600px] mx-auto w-full flex-1">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-max">
-                   <div className="md:col-span-2 lg:col-span-2"><TaskWidget accessToken={accessToken} /></div>
-                   <div><CalendarWidget accessToken={accessToken} /></div>
-                   <div className="md:col-span-2 lg:col-span-1"><WalletDiscipline /></div>
-                   <div><PrayerDiscipline /></div>
-                   <div><RoomMakeover /></div>
-                </div>
-               </div>
-             } />
-             <Route path="/tasks" element={<div className="p-8 max-w-4xl mx-auto"><TaskWidget accessToken={accessToken} /></div>} />
-             <Route path="/calendar" element={<div className="p-4 sm:p-8 max-w-7xl mx-auto w-full"><CalendarManager accessToken={accessToken} /></div>} />
-             <Route path="/wallet" element={<div className="p-8 max-w-4xl mx-auto"><WalletDiscipline /></div>} />
-             <Route path="/prayer" element={<div className="p-8 max-w-4xl mx-auto"><PrayerDiscipline /></div>} />
-             <Route path="/makeover" element={<div className="p-8 max-w-4xl mx-auto"><RoomMakeover /></div>} />
-             <Route path="/rio" element={<div className="p-8 max-w-4xl mx-auto"><RealCalendarIntegration /></div>} />
-             <Route path="/settings" element={<div className="p-8 max-w-4xl mx-auto"><LockdownSettings /></div>} />
-             <Route path="/trust" element={<div className="p-4 sm:p-8 max-w-5xl mx-auto w-full"><LegalTrustModal initialTab="trust" /></div>} />
-             <Route path="/author" element={<div className="p-4 sm:p-8 max-w-5xl mx-auto w-full"><LegalTrustModal initialTab="author" /></div>} />
-             <Route path="/terms" element={<div className="p-4 sm:p-8 max-w-5xl mx-auto w-full"><LegalTrustModal initialTab="terms" /></div>} />
-             <Route path="/privacy" element={<div className="p-4 sm:p-8 max-w-5xl mx-auto w-full"><LegalTrustModal initialTab="privacy" /></div>} />
-             <Route path="/cloud" element={<div className="p-4 sm:p-8 max-w-5xl mx-auto w-full"><LegalTrustModal initialTab="cloud" /></div>} />
-             <Route path="/legal" element={<div className="p-4 sm:p-8 max-w-5xl mx-auto w-full"><LegalTrustModal initialTab="author" /></div>} />
-           </Routes>
+           <div className="flex-1 overflow-y-auto overflow-x-hidden w-full max-w-full custom-scrollbar">
+             <Routes>
+               <Route path="/" element={<Navigate to="/dashboard" replace />} />
+               <Route path="/dashboard" element={
+                 <Layout>
+                    <div className="bg-gray-900/50 border border-gray-800 rounded-3xl p-6 sm:p-10 text-center space-y-3">
+                      <h2 className="text-xl sm:text-2xl font-black text-white uppercase tracking-widest">Welcome to Cymatic OS</h2>
+                      <p className="text-xs sm:text-sm text-gray-400 max-w-md mx-auto">Select a tool from the navigation menu to begin your disciplined architectural workflow.</p>
+                    </div>
+                 </Layout>
+               } />
+               <Route path="/tasks" element={<Layout><TaskWidget accessToken={accessToken} /></Layout>} />
+               <Route path="/calendar" element={<Layout><CalendarManager accessToken={accessToken} /></Layout>} />
+               <Route path="/wallet" element={<Layout><WalletDiscipline /></Layout>} />
+               <Route path="/prayer" element={<Layout><PrayerDiscipline /></Layout>} />
+               <Route path="/makeover" element={<Layout><RoomMakeover /></Layout>} />
+               <Route path="/rio" element={<Layout><RealCalendarIntegration /></Layout>} />
+               <Route path="/settings" element={<Layout><LockdownProtocols /></Layout>} />
+               <Route path="/apps" element={<Layout><AppAuthority /></Layout>} />
+               <Route path="/focus" element={<Layout><FocusVpnManager /></Layout>} />
+               <Route path="/reseller" element={<Layout><ResellerManager /></Layout>} />
+               <Route path="/trust" element={<Layout><LegalTrustModal initialTab="trust" /></Layout>} />
+               <Route path="/author" element={<Layout><LegalTrustModal initialTab="author" /></Layout>} />
+               <Route path="/terms" element={<Layout><LegalTrustModal initialTab="terms" /></Layout>} />
+               <Route path="/privacy" element={<Layout><LegalTrustModal initialTab="privacy" /></Layout>} />
+               <Route path="/cloud" element={<Layout><LegalTrustModal initialTab="cloud" /></Layout>} />
+               <Route path="/wellbeing" element={<Layout><WellbeingAndMonitoringHub /></Layout>} />
+               <Route path="/legal" element={<Layout><LegalTrustModal initialTab="author" /></Layout>} />
+             </Routes>
+           </div>
+           
+           <ProfileManagement isOpen={isProfileModalOpen} onClose={() => setIsProfileModalOpen(false)} />
         </main>
       </div>
   );
 }
-

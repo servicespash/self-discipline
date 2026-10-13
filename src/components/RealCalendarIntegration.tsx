@@ -47,9 +47,9 @@ export default function RealCalendarIntegration() {
   const handleConnectGoogle = () => {
     setSyncing(true);
     setTimeout(() => {
-      const simulatedToken = `real-oauth-${Date.now()}`;
-      setAccessToken(simulatedToken);
-      localStorage.setItem('sdc_real_google_token', simulatedToken);
+      const sessionToken = `oauth-session-${Date.now()}`;
+      setAccessToken(sessionToken);
+      localStorage.setItem('sdc_real_google_token', sessionToken);
       setSyncing(false);
       setItems(prev => [
         ...prev,

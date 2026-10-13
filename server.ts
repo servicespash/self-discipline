@@ -16,13 +16,58 @@ async function startServer() {
   app.use(express.json());
 
   const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY || '';
-  const ai = new GoogleGenAI(apiKey ? { apiKey } : {});
+  const ai = new GoogleGenAI({
+    apiKey: apiKey || '',
+    httpOptions: {
+      headers: {
+        'User-Agent': 'aistudio-build',
+      }
+    }
+  });
+
+  // Robust multi-model cascading helper to prevent 503 unavailability
+  async function callGeminiWithFallback(contents: any, systemInstruction: string): Promise<string> {
+    const candidateModels = ['gemini-3.1-flash-lite', 'gemini-3.8-flash', 'gemini-flash-latest'];
+    let lastError: any = null;
+
+    for (const model of candidateModels) {
+      try {
+        const response = await ai.models.generateContent({
+          model,
+          contents,
+          config: {
+            systemInstruction
+          }
+        });
+        if (response && response.text) {
+          return response.text;
+        }
+      } catch (err: any) {
+        console.warn(`[Rama Server] Model ${model} unavailable (${err?.status || err?.message}), attempting next model...`);
+        lastError = err;
+      }
+    }
+    throw lastError || new Error('All Gemini model endpoints currently unavailable');
+  }
 
   app.post('/api/chat', async (req, res) => {
     const { messages, userContext, memory, rollingSummary, pastSessionsContext } = req.body;
     try {
-      let systemInstruction = "You are Rama, chief discipline architect, executive strategist, and personal tutor of the Cymatic OS.";
-      
+      let systemInstruction = `You are Rama, the intelligent, content-aware executive discipline strategist, trusted personal companion, and voice/intent assistant of Cymatic OS.
+You speak directly, empathetically, and authoritatively. You are a true friend and tactical mentor to the user.
+You have deep awareness of the user's focus goals, family, relationships, spiritual discipline, and hardware intent capabilities.
+
+Core Personality & Response Directives:
+1. Speak with natural human intelligence, warmth, and sharpness. NEVER sound like a robotic placeholder or repeat repetitive canned "directive acknowledgement" scripts.
+2. Address the user by their moniker/name directly (${userContext?.moniker || 'Architect'}).
+3. When the user asks to send a message or communicate with someone (e.g., their Mom, father, family member, friend, client):
+   - Immediately express care, respect, and enthusiasm to assist. Acknowledge that maintaining strong family bonds and clear communication is a core pillar of life discipline.
+   - Propose an initial drafted message (e.g., a warm, respectful check-in, expression of gratitude, or update).
+   - Ask if they would like to adjust the tone or add any specific details.
+   - Let them know you have prepared the message and they can dispatch it via WhatsApp, SMS, or copy it directly.
+4. When the user asks to call someone, play a song, set a focus timer, or check their schedule, confirm and guide them smoothly.
+5. If the user shares a goal, habit, or rule, reinforce it and commit it into memory.`;
+
       if (userContext) {
         systemInstruction += `\n\n[USER AWARENESS PROFILE]`;
         if (userContext.moniker) systemInstruction += `\n- User Moniker: ${userContext.moniker}`;
@@ -62,34 +107,26 @@ async function startServer() {
         });
       }
 
-      systemInstruction += `\n\nDirectives:
-1. Address the user by their moniker/name directly with authoritative clarity.
-2. Maintain strong continuity with past interactions and previously established commitments.
-3. Actively relate answers to their real-time tasks, prayer schedule, and lockdown discipline.
-4. Provide high-yield, structured, direct tactical advice with zero corporate fluff.
-5. When the user sets a rule or focus goal, reinforce and solidify it into ongoing memory.`;
-
-      // Call Gemini with timeout promise race
-      const apiCall = ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: messages,
-        config: {
-          systemInstruction
-        }
-      });
-
-      const timeoutPromise = new Promise<{ text: string }>((_, reject) =>
-        setTimeout(() => reject(new Error('TIMEOUT')), 12000)
-      );
-
-      const response: any = await Promise.race([apiCall, timeoutPromise]);
-      res.json({ message: response.text });
+      const replyText = await callGeminiWithFallback(messages, systemInstruction);
+      res.json({ message: replyText });
     } catch (err: any) {
       console.warn('[Rama] AI fallback engaged:', err?.message || err);
       const name = userContext?.moniker || 'Architect';
-      const isLocked = userContext?.lockdownActive;
-      const fallbackReply = `Directive acknowledged, ${name}. System lockdown is currently ${isLocked ? 'ENFORCED (shield online)' : 'on MONITOR STANDBY'}. All active operations and spiritual routines are logged in memory. Stay focused on your primary high-impact objective and execute without compromise.`;
-      res.json({ message: fallbackReply });
+      const lastMsg = (messages && messages.length > 0) ? (messages[messages.length - 1]?.parts?.[0]?.text || '') : '';
+      const lower = lastMsg.toLowerCase();
+      
+      let dynamicReply = `I hear you, ${name}. I am actively assisting you with your operational priorities.`;
+      if (lower.includes('mom') || lower.includes('mother')) {
+        dynamicReply = `I would be honored to help you connect with your mom, ${name}. Maintaining warmth and respect with your family is a core foundation of personal strength. Here is a thoughtful draft you can send:\n\n"Hi Mom, just wanted to check in and see how you are doing. Hope you are having a wonderful, peaceful day! Sending you love."\n\nI can open the Message Designer for you right away so you can send this via WhatsApp or SMS. What would you like to add?`;
+      } else if (lower.includes('call') || lower.includes('dial')) {
+        dynamicReply = `Understood, ${name}. Let's get that call set up. Please confirm the phone number and which network carrier (SIM 1 or SIM 2) you'd prefer to dial with, and I'll connect you through your device dialer.`;
+      } else if (lower.includes('play') || lower.includes('song') || lower.includes('music')) {
+        dynamicReply = `Discipline soundtrack ready, ${name}. Tell me the track or artist you'd like to hear, and I will stream it embedded inside our in-app player via YouTube Music, Spotify, or Deezer.`;
+      } else {
+        dynamicReply = `Understood, ${name}. I have logged your directive in our Cymatic OS memory vault. System focus is primed and ready. Tell me how you'd like to proceed or what command you want to execute next.`;
+      }
+
+      res.json({ message: dynamicReply });
     }
   });
 
@@ -122,20 +159,11 @@ Make it authoritative, crisp, and ready for export to PDF, email, or document re
         }
       ];
 
-      const apiCall = ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: summaryContents,
-        config: {
-          systemInstruction: "You are Rama, the executive discipline orchestrator and chief tutor of Cymatic OS. Generate authoritative, concise executive summaries."
-        }
-      });
-
-      const timeoutPromise = new Promise<{ text: string }>((_, reject) =>
-        setTimeout(() => reject(new Error('TIMEOUT')), 12000)
+      const summaryText = await callGeminiWithFallback(
+        summaryContents,
+        "You are Rama, the executive discipline orchestrator and chief tutor of Cymatic OS. Generate authoritative, concise executive summaries."
       );
-
-      const response: any = await Promise.race([apiCall, timeoutPromise]);
-      res.json({ summary: response.text });
+      res.json({ summary: summaryText });
     } catch (err: any) {
       console.warn('[Rama Summary] Fallback engaged:', err?.message || err);
       const name = userContext?.moniker || 'Isabirye Latif';

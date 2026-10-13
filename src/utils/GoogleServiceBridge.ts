@@ -58,26 +58,52 @@ class GoogleServiceBridgeEngine {
     if (!token) throw new Error('Unauthenticated Google Workspace session.');
 
     const now = new Date().toISOString();
-    const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${now}&singleEvents=true&orderBy=startTime`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
+    try {
+      const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${now}&singleEvents=true&orderBy=startTime`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
 
-    if (!res.ok) throw new Error(`Google Calendar API error: ${res.status}`);
-    const data = await res.json();
-    return data.items || [];
+      if (!res.ok) {
+        if (res.status === 401) {
+          this.clearToken();
+          throw new Error('Google Calendar authorization expired (401). Please re-authenticate.');
+        }
+        throw new Error(`Google Calendar API error: ${res.status}`);
+      }
+      const data = await res.json();
+      return data.items || [];
+    } catch (e: any) {
+      if (e?.message?.includes('401')) {
+        this.clearToken();
+      }
+      throw e;
+    }
   }
 
   public async fetchGoogleTasks(): Promise<GoogleTask[]> {
     const token = this.getAccessToken();
     if (!token) throw new Error('Unauthenticated Google Workspace session.');
 
-    const res = await fetch('https://www.googleapis.com/tasks/v1/users/@me/lists/@default/tasks', {
-      headers: { Authorization: `Bearer ${token}` }
-    });
+    try {
+      const res = await fetch('https://www.googleapis.com/tasks/v1/users/@me/lists/@default/tasks', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
 
-    if (!res.ok) throw new Error(`Google Tasks API error: ${res.status}`);
-    const data = await res.json();
-    return data.items || [];
+      if (!res.ok) {
+        if (res.status === 401) {
+          this.clearToken();
+          throw new Error('Google Tasks authorization expired (401). Please re-authenticate.');
+        }
+        throw new Error(`Google Tasks API error: ${res.status}`);
+      }
+      const data = await res.json();
+      return data.items || [];
+    } catch (e: any) {
+      if (e?.message?.includes('401')) {
+        this.clearToken();
+      }
+      throw e;
+    }
   }
 }
 

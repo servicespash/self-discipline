@@ -2,4 +2,5 @@
 <resources>
     <string name="app_name">Cymatic Discipline OS</string>
     <string name="custom_url_scheme">cymatic</string>
+    <string name="accessibility_service_description">Enforces bulletproof lockdown during focus sessions.</string>
 </resources>

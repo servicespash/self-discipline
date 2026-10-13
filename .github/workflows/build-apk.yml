@@ -1,13 +1,15 @@
-name: Build Cymatic OS Android APK
+name: Build Cymatic OS Android APK & Release
 
 on:
   push:
     branches: [main, master]
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 jobs:
   build-apk:
-    name: Build Android APK
+    name: Build Android APK (Debug & Release)
     runs-on: ubuntu-latest
 
     steps:
@@ -43,7 +45,7 @@ jobs:
             npm install
           fi
 
-      - name: Build Web Application
+      - name: Build Web Application (with relative assets)
         run: npm run build
 
       - name: Sync Web Build to Android Assets
@@ -51,27 +53,29 @@ jobs:
           mkdir -p android/app/src/main/assets/public
           cp -r dist/* android/app/src/main/assets/public/
 
-      - name: Build Android APK
+      - name: Build Android APKs (Debug & Release)
         run: |
           mkdir -p build/outputs/apk/debug
+          mkdir -p build/outputs/apk/release
           cd android
-          echo "Compiling Cymatic Discipline OS Debug APK..."
-          if gradle assembleDebug --stacktrace; then
-            echo "Gradle assembleDebug completed successfully!"
+          echo "Compiling Cymatic Discipline OS Debug & Release APKs..."
+          if gradle assembleDebug assembleRelease --stacktrace; then
+            echo "Gradle build completed successfully!"
           elif [ -f "./gradlew" ]; then
             chmod +x gradlew
-            ./gradlew assembleDebug --stacktrace || true
+            ./gradlew assembleDebug assembleRelease --stacktrace || true
           else
-            echo "Gradle assemble completed."
+            echo "Gradle build completed."
           fi
           cd ..
 
           if ls android/app/build/outputs/apk/debug/*.apk 1> /dev/null 2>&1; then
-            echo "Copying generated APK to bundle outputs..."
             cp -v android/app/build/outputs/apk/debug/*.apk build/outputs/apk/debug/
           fi
+          if ls android/app/build/outputs/apk/release/*.apk 1> /dev/null 2>&1; then
+            cp -v android/app/build/outputs/apk/release/*.apk build/outputs/apk/release/
+          fi
 
-          # Produce web distribution archive and build manifest
           tar -czf build/outputs/apk/debug/cymatic-os-web-build.tar.gz dist/
           echo "Build completed at $(date -u) for commit ${{ github.sha }}" > build/outputs/apk/debug/build-manifest.txt
 
@@ -81,5 +85,36 @@ jobs:
           name: cymatic-discipline-os-apk-bundle
           path: |
             build/outputs/apk/debug/*
+            build/outputs/apk/release/*
             android/app/build/outputs/apk/debug/*.apk
+            android/app/build/outputs/apk/release/*.apk
           if-no-files-found: warn
+
+  release:
+    needs: build-apk
+    name: Publish GitHub Release or Pre-Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: cymatic-discipline-os-apk-bundle
+          path: release-artifacts
+
+      - name: Create Release or Pre-Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release-artifacts/**/*.apk
+            release-artifacts/**/*.tar.gz
+            release-artifacts/**/*.txt
+          prerelease: ${{ contains(github.ref, '-rc') || contains(github.ref, '-beta') || contains(github.ref, '-alpha') }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

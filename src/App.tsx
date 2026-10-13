@@ -10,11 +10,21 @@ import { SessionProvider, useSession } from './context/SessionContext';
 import Dashboard from './components/Dashboard';
 import LockdownOverlay from './components/LockdownOverlay';
 import RamaFloatingHub from './components/RamaFloatingHub';
+import { InAppMediaPlayer } from './components/media/InAppMediaPlayer';
 import LegalTrustModal, { LegalTabType } from './components/LegalTrustModal';
 import { DisciplineBridge, SystemLockdownPayload } from './DisciplineBridge';
 import { SpiritualNotifications } from './utils/spiritualNotificationService';
 import { RamaVoice } from './utils/ramaVoiceService';
-import { Shield, ShieldAlert, ShieldCheck, Cpu, LogOut, Terminal, BotMessageSquare, ExternalLink, Award } from 'lucide-react';
+import { Shield, ShieldAlert, ShieldCheck, Cpu, LogOut, Terminal, BotMessageSquare, ExternalLink, Award, Sparkles, Share2 } from 'lucide-react';
+import { OnboardingPermissions } from './components/OnboardingPermissions';
+import { Login } from './components/Login';
+import { 
+  extractReferralCodeFromUrl, 
+  trackReferralVisit, 
+  PENDING_REFERRAL_CODE_KEY, 
+  ACTIVE_REFERRER_META_KEY, 
+  ReferralResolution 
+} from './utils/licensing';
 
 const AppContent: React.FC = () => {
   const { session, loading, signIn, signOut } = useSession();
@@ -22,8 +32,9 @@ const AppContent: React.FC = () => {
   const [inputMoniker, setInputMoniker] = useState('');
   const [lockdownState, setLockdownState] = useState<SystemLockdownPayload>(() => DisciplineBridge.getState());
   const [bridgeReady, setBridgeReady] = useState(false);
-  const [isHubVisible, setIsHubVisible] = useState(false);
+  const [isHubVisible, setIsHubVisible] = useState(true);
   const [legalModalTab, setLegalModalTab] = useState<LegalTabType | null>(null);
+  const [referralInvite, setReferralInvite] = useState<ReferralResolution | null>(null);
 
   // Subscribe to DisciplineBridge State & Initialize Notifications
   useEffect(() => {
@@ -60,9 +71,40 @@ const AppContent: React.FC = () => {
       }
     };
 
+    // Intercept incoming dynamic referral link & track visit live against originating user in database
+    const checkReferral = () => {
+      const incomingRefCode = extractReferralCodeFromUrl();
+      if (incomingRefCode) {
+        trackReferralVisit(incomingRefCode).then((res) => {
+          if (res.info) {
+            setReferralInvite(res.info);
+          } else {
+            setReferralInvite({
+              valid: true,
+              referralCode: incomingRefCode
+            });
+          }
+        });
+      } else {
+        try {
+          const savedMeta = localStorage.getItem(ACTIVE_REFERRER_META_KEY);
+          const pending = localStorage.getItem(PENDING_REFERRAL_CODE_KEY);
+          if (savedMeta) {
+            setReferralInvite(JSON.parse(savedMeta));
+          } else if (pending) {
+            setReferralInvite({ valid: true, referralCode: pending });
+          }
+        } catch {}
+      }
+    };
+
+    checkReferral();
     handleLaunchUrl(window.location.href);
 
-    const onHashOrPop = () => handleLaunchUrl(window.location.href);
+    const onHashOrPop = () => {
+      handleLaunchUrl(window.location.href);
+      checkReferral();
+    };
     window.addEventListener('hashchange', onHashOrPop);
     window.addEventListener('popstate', onHashOrPop);
 
@@ -88,7 +130,7 @@ const AppContent: React.FC = () => {
   const handleSignInSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputEmail.trim()) return;
-    signIn(inputEmail, inputMoniker || 'Isabirye Latif (Solo Architect)');
+    signIn(inputEmail, inputMoniker || 'Isabirye Latif (Solo Architect)', 'User');
   };
 
   if (loading || !bridgeReady) {
@@ -107,118 +149,25 @@ const AppContent: React.FC = () => {
     );
   }
 
+
+// ... in AppContent
   // Session Gate (Login)
   if (!session) {
     return (
-      <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-4 sm:p-8 text-gray-100 font-sans">
-        {/* Widened Container for clean text layout */}
-        <div className="w-full max-w-2xl p-8 sm:p-10 bg-gray-900/90 border border-gray-800/90 rounded-3xl shadow-2xl space-y-8 backdrop-blur-xl">
-          <div className="space-y-3 text-left">
-            <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full">
-              <Shield size={14} className="text-emerald-400" />
-              <span className="text-[10px] font-black uppercase text-emerald-400 tracking-widest">
-                Cymatic Hub & Resonance Operating System
-              </span>
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-              SYSTEM EXECUTION GATE
-            </h1>
-            <p className="text-xs text-gray-400 leading-relaxed font-medium">
-              Institutional register, study synchronization, and execution monitoring pipeline. Authenticate local call sign to proceed.
-            </p>
-          </div>
-
-          <form onSubmit={handleSignInSubmit} className="space-y-5">
-            <div className="space-y-2">
-              <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400">
-                Architect / Moniker Call Sign
-              </label>
-              <input
-                type="text"
-                placeholder="Isabirye Latif (Solo Architect)"
-                value={inputMoniker}
-                onChange={(e) => setInputMoniker(e.target.value)}
-                className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-4 py-3.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-emerald-500 transition-all font-mono"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400">
-                Institutional Workspace Address
-              </label>
-              <input
-                type="email"
-                required
-                placeholder="latif@cymatic.local"
-                value={inputEmail}
-                onChange={(e) => setInputEmail(e.target.value)}
-                className="w-full bg-gray-950 border border-gray-800 rounded-2xl px-4 py-3.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-emerald-500 transition-all font-mono"
-              />
-            </div>
-
-            <button
-              type="submit"
-              className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-gray-950 font-black rounded-2xl text-xs uppercase tracking-widest transition-all shadow-xl shadow-emerald-950/40 flex items-center justify-center gap-2"
-            >
-              <Terminal size={16} /> Authenticate Local Workspace
-            </button>
-          </form>
-
-          <div className="pt-4 border-t border-gray-800/80 flex items-center justify-between text-[10px] text-gray-500 font-mono">
-            <span>DISCIPLINE_BRIDGE: ONLINE</span>
-            <span>CYMATIC_HUB: READY</span>
-          </div>
-
-          {/* Subtle Institutional Trust & Legal Footer */}
-          <div className="pt-4 border-t border-gray-800/60 flex flex-wrap items-center justify-between gap-y-2 text-[11px] font-mono text-gray-500">
-            <div className="flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-              <span>Code Owner: <strong className="text-gray-300">Isabirye Latif</strong></span>
-              <span>•</span>
-              <span>Auditor: <strong className="text-gray-400">Cymatic Security Board</strong></span>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setLegalModalTab('trust')}
-                className="hover:text-emerald-400 transition-colors"
-              >
-                Trust
-              </button>
-              <span>•</span>
-              <button
-                type="button"
-                onClick={() => setLegalModalTab('terms')}
-                className="hover:text-gray-300 transition-colors"
-              >
-                Terms
-              </button>
-              <span>•</span>
-              <button
-                type="button"
-                onClick={() => setLegalModalTab('privacy')}
-                className="hover:text-gray-300 transition-colors"
-              >
-                Privacy
-              </button>
-              <span>•</span>
-              <span className="text-gray-600">© 2024–2026</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Global Legal & Trust Modal Dialog */}
-        {legalModalTab && (
-          <LegalTrustModal
-            isOpen={true}
-            initialTab={legalModalTab}
-            isModal={true}
-            onClose={() => setLegalModalTab(null)}
-          />
-        )}
-      </div>
+      <Login
+        inputEmail={inputEmail}
+        setInputEmail={setInputEmail}
+        inputMoniker={inputMoniker}
+        setInputMoniker={setInputMoniker}
+        referralInvite={referralInvite}
+        handleSignInSubmit={handleSignInSubmit}
+        setLegalModalTab={setLegalModalTab}
+      />
     );
+  }
+
+  if (!session.isOnboardingComplete) {
+    return <OnboardingPermissions />;
   }
 
   return (
@@ -246,6 +195,9 @@ const AppContent: React.FC = () => {
           <span className="hidden sm:inline-block text-[11px] font-black uppercase tracking-wider text-emerald-400">Rama AI</span>
         </button>
       )}
+
+      {/* Global In-App Embedded Media Player (Spotify, YouTube Music, Deezer, Local Audio) */}
+      <InAppMediaPlayer />
 
       {/* Global Legal & Trust Modal Dialog for Logged-In Sessions */}
       {legalModalTab && (

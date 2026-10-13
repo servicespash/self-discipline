@@ -285,10 +285,10 @@ export default function CalendarManager({ accessToken }: { accessToken: string |
       setSyncStatusMsg(`Successfully synchronized ${mapped.length} Google Calendar events.`);
       setTimeout(() => setSyncStatusMsg(''), 4000);
     } catch (err: any) {
-      console.error('[CalendarManager] Google sync error:', err);
-      setSyncStatusMsg('Google Session expired. Please re-authenticate.');
+      console.warn('[CalendarManager] Google sync notification:', err?.message || err);
+      setSyncStatusMsg('Google Calendar authorization expired. Please connect your Google account.');
       setIsGoogleAuth(false);
-      setShowTokenModal(true);
+      GoogleServiceBridge.clearToken();
     } finally {
       setGoogleSyncLoading(false);
     }

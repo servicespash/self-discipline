@@ -187,13 +187,27 @@ export default function LockdownOverlay({ onTerminate }: LockdownProps) {
         </div>
       </div>
 
-      <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-2xl space-y-1">
+      <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-2xl space-y-1 text-left">
         <p className="text-[9px] text-amber-400 font-black uppercase tracking-widest flex items-center gap-1.5">
-          <EyeOff size={12} /> Target Suppression Packages
+          <EyeOff size={12} /> Suppressed Target Packages ({lockdownState.restrictedPackages.length})
         </p>
         <p className="text-xs text-gray-300 font-mono font-medium truncate">
-          {lockdownState.restrictedPackages.join(', ')}
+          {lockdownState.restrictedPackages.join(', ') || 'All high-dopamine algorithms suppressed'}
         </p>
+      </div>
+
+      <div className="bg-emerald-500/10 border border-emerald-500/20 p-3.5 rounded-2xl flex items-center justify-between text-left">
+        <div>
+          <span className="text-[9px] text-emerald-400 font-black uppercase tracking-widest block">
+            Permitted Social Channel Exception
+          </span>
+          <span className="text-xs text-white font-mono font-bold">
+            {lockdownState.allowedSocialPackage || 'Zero Permitted (Strict Mode Active)'}
+          </span>
+        </div>
+        <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-500/30 font-bold shrink-0">
+          {lockdownState.allowedSocialPackage ? '1/1 EXCEPTION' : '0/1 STRICT'}
+        </span>
       </div>
 
       <div className="pt-2">

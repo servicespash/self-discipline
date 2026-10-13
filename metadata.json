@@ -1,6 +1,6 @@
 {
   "name": "Cymatic Discipline OS",
   "description": "Unified system orchestrator for high-performance architectural discipline and resonance.",
-  "requestFramePermissions": ["geolocation", "camera", "notifications"],
+  "requestFramePermissions": ["geolocation", "camera", "microphone", "notifications"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -2,36 +2,47 @@
   "entities": {
     "User": {
       "title": "User",
-      "description": "User profile information",
+      "description": "User profile with roles.",
       "type": "object",
       "properties": {
-        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "uid": { "type": "string" },
         "email": { "type": "string", "format": "email" },
-        "onboardingComplete": { "type": "boolean", "description": "Whether the user has completed onboarding" }
+        "role": { "type": "string", "enum": ["student", "guardian", "trainer", "administrator"] },
+        "assignedSeatEmail": { "type": "string", "format": "email" }
       },
-      "required": ["uid", "email"]
+      "required": ["uid", "email", "role"]
     },
-    "Goal": {
-      "title": "Goal",
-      "description": "A user goal or plan",
+    "License": {
+      "title": "License",
+      "description": "License management with referral codes.",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "userId": { "type": "string" },
-        "title": { "type": "string" },
-        "status": { "type": "string", "enum": ["pending", "completed"] }
+        "licenseKey": { "type": "string" },
+        "referralCode": { "type": "string" },
+        "ownerUid": { "type": "string" },
+        "ownerEmail": { "type": "string", "format": "email" },
+        "ownerMoniker": { "type": "string" },
+        "tier": { "type": "string" },
+        "totalSeats": { "type": "integer" },
+        "usedSeats": { "type": "integer" },
+        "clicks": { "type": "integer" },
+        "assignedMembers": { "type": "array" },
+        "referredUsers": { "type": "array" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
       },
-      "required": ["id", "userId", "title"]
+      "required": ["licenseKey", "referralCode", "ownerUid", "totalSeats"]
     }
   },
   "firestore": {
-    "users/{userId}": {
+    "/users/{uid}": {
       "schema": "User",
-      "description": "User profiles"
+      "description": "User profiles."
     },
-    "users/{userId}/goals/{goalId}": {
-      "schema": "Goal",
-      "description": "User goals"
+    "/licenses/{licenseKey}": {
+      "schema": "License",
+      "description": "License management."
     }
   }
 }
