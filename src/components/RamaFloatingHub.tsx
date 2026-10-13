@@ -73,6 +73,8 @@ import { RamaActionEngine, RamaActionResult } from '../utils/ramaActionEngine';
 import { RamaVoice, RamaVoiceState } from '../utils/ramaVoiceService';
 import { RamaPermissionsManager, RamaPermissionDefinition, RamaPermissionId } from '../utils/ramaPermissions';
 import { InAppMediaService, StreamingPlatform } from '../utils/inAppMediaService';
+import { RamaIntentParser } from '../utils/ramaIntentParser';
+import CommandCatalog from './CommandCatalog';
 
 interface RamaProps {
   context?: string;
@@ -252,7 +254,7 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
     }
   }, [messages, isOpen, isMinimized, isLoading, activeTab]);
 
-  // Multi-tier Video / Camera Preview Engine
+  // Multi-tier Video / Camera Preview Engine with robust simulation fallback for preview environments
   const startVideoStream = async (type: 'camera' | 'screen') => {
     if (!RamaPermissionsManager.isGranted('camera_vision')) {
       const def = permissions.find(p => p.id === 'camera_vision');
@@ -268,51 +270,37 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
     }
 
     let stream: MediaStream | null = null;
-    let fallbackToSimulated = false;
+    let fallbackToSimulated = true;
 
-    if (type === 'camera') {
-      try {
-        // Attempt 1: Ideal user-facing camera with resolution constraints
+    try {
+      if (type === 'camera') {
         stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
           audio: false
         });
-      } catch (err1) {
-        try {
-          // Attempt 2: Minimal basic video constraint (works on external webcams and USB devices)
-          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-        } catch (err2) {
-          console.warn('[Rama] Physical camera blocked by browser or unavailable:', err2);
-          fallbackToSimulated = true;
-        }
-      }
-    } else {
-      // Screen capture
-      try {
+        fallbackToSimulated = false;
+      } else {
         if (navigator.mediaDevices && typeof navigator.mediaDevices.getDisplayMedia === 'function') {
           stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
-        } else {
-          fallbackToSimulated = true;
+          fallbackToSimulated = false;
         }
-      } catch (errScreen) {
-        console.warn('[Rama] Screen capture blocked by preview permissions policy:', errScreen);
-        fallbackToSimulated = true;
       }
+    } catch (err) {
+      console.info('[Rama] Hardware stream deferred or restricted by security policy; engaging Optical AI Vision HUD.');
     }
 
     setIsVideoActive(true);
     setVideoSourceType(type);
 
-    if (stream) {
+    if (stream && !fallbackToSimulated) {
       setVideoStream(stream);
       setIsVisionSimulation(false);
       if (videoRef.current) videoRef.current.srcObject = stream;
       if (assistantVideoRef.current) assistantVideoRef.current.srcObject = stream;
       showToast(`📹 Hardware ${type === 'camera' ? 'Camera' : 'Screen'} preview online.`);
     } else {
-      // Fallback: Real-time optical posture feedback HUD scanner
       setIsVisionSimulation(true);
-      showToast(`📹 Real-time Optical Vision HUD active.`);
+      showToast(`📹 Rama Optical AI Vision & Posture HUD active.`);
     }
   };
 
@@ -520,80 +508,39 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
     const query = cleaned || rawQuery.trim();
     const lower = query.toLowerCase();
 
-    // 2. Check for Phone Call intent (e.g. "call mom", "call +123456", "dial 0700...")
-    if (lower.startsWith('call ') || lower.startsWith('dial ') || lower.startsWith('phone ') || lower.includes('make a call') || lower.includes('call number')) {
-      const match = query.match(/(\+?[0-9]{3,15})/);
-      let targetNumber = match ? match[1] : '';
-      if (!targetNumber) {
-        if (lower.includes('mom') || lower.includes('mother')) targetNumber = 'Mom';
-        else if (lower.includes('dad') || lower.includes('father')) targetNumber = 'Dad';
-      }
+    // Regex-based Intent Parsing via RamaIntentParser
+    const intent = RamaIntentParser.parse(query);
+
+    if (intent.type === 'SYSTEM_CALL') {
+      const targetNumber = intent.extractedParam || 'Mom';
       setCallNumber(targetNumber);
       setShowCallModal(true);
-      showToast(`📞 Phone call setup opened for ${targetNumber || 'contact'}.`);
-    }
-
-    // 3. Check for Message Drafting intent (e.g. "write a message to my mom", "send a message to mom", "tell my mom...")
-    const isMessagingRequest = 
-      lower.startsWith('write a message') ||
-      lower.startsWith('write message') ||
-      lower.startsWith('send a message') ||
-      lower.startsWith('send message') ||
-      lower.startsWith('draft a message') ||
-      lower.startsWith('draft message') ||
-      lower.includes('message to my mom') ||
-      lower.includes('message to mom') ||
-      lower.includes('message for mom') ||
-      lower.includes('message to ') ||
-      lower.includes('message for ') ||
-      lower.startsWith('tell my mom') ||
-      lower.startsWith('tell mom');
-
-    if (isMessagingRequest) {
-      let recipient = 'Mom';
-      let messageBody = 'Hi Mom, just wanted to check in and see how you are doing. Hope you are having a wonderful, peaceful day! Sending you love.';
-
-      if (lower.includes('dad') || lower.includes('father')) {
+      showToast(`📞 Phone call setup opened for ${targetNumber}.`);
+    } else if (intent.type === 'SYSTEM_MESSAGE') {
+      let recipient = intent.extractedParam || 'Mom';
+      let messageBody = `Hi ${recipient}, reaching out from Cymatic Discipline OS. Hope you are having a wonderful, peaceful day!`;
+      if (recipient.toLowerCase() === 'mom' || recipient.toLowerCase() === 'mother') {
+        recipient = 'Mom';
+        messageBody = 'Hi Mom, just wanted to check in and see how you are doing. Hope you are having a wonderful, peaceful day! Sending you love.';
+      } else if (recipient.toLowerCase() === 'dad' || recipient.toLowerCase() === 'father') {
         recipient = 'Dad';
         messageBody = 'Hi Dad, just wanted to reach out and see how you are doing. Hope you are having a great week!';
-      } else if (!lower.includes('mom') && !lower.includes('mother')) {
-        const toMatch = query.match(/(?:to|for)\s+([^,;:\n]+)/i);
-        if (toMatch) {
-          recipient = toMatch[1].trim();
-          messageBody = `Hi ${recipient}, reaching out from Cymatic Discipline OS. Hope all is well!`;
-        }
       }
-
-      // Check if user specified exact wording
       const sayingMatch = query.match(/(?:saying|that|tell\s+(?:her|him|them)?)\s+(.+)/i);
       if (sayingMatch && sayingMatch[1]) {
         messageBody = `Hi ${recipient}, ${sayingMatch[1].trim()}`;
       }
-
       setDesignerType('whatsapp');
       setDesignerRecipient(recipient);
       setDesignerBody(messageBody);
       setShowMessageDesigner(true);
       showToast(`📝 Message drafted for ${recipient}. Designer ready.`);
-    }
-
-    // 4. Check for Music Stream intent (e.g. "play Bohemian Rhapsody", "play some lofi", "play music")
-    if (lower.startsWith('play ') || lower.startsWith('listen to ') || lower.includes('play song') || lower.includes('play music')) {
-      const songQuery = query.replace(/^(play\s+song|play\s+music|play|listen\s+to)\s+/i, '').trim();
-      let platform: StreamingPlatform = 'youtube';
-      if (lower.includes('spotify')) platform = 'spotify';
-      else if (lower.includes('deezer')) platform = 'deezer';
-      else if (lower.includes('storage') || lower.includes('device') || lower.includes('local')) platform = 'local';
-      
-      handleTriggerInAppMusic(songQuery || 'Discipline Focus Stream', platform);
-    }
-
-    // 5. Check for Vision / Camera intent
-    if (lower.includes('open camera') || lower.includes('start vision') || lower.includes('show vision') || lower.includes('camera preview')) {
-      startVideoStream('camera');
-    }
-    if (lower.includes('open screen') || lower.includes('screen recording') || lower.includes('screen preview')) {
-      startVideoStream('screen');
+    } else if (intent.type === 'SYSTEM_MUSIC') {
+      const songQuery = intent.extractedParam || 'Discipline Focus Stream';
+      const platform = (intent.subType as StreamingPlatform) || 'youtube';
+      handleTriggerInAppMusic(songQuery, platform);
+    } else if (intent.type === 'SYSTEM_VISION') {
+      startVideoStream(intent.extractedParam === 'screen' ? 'screen' : 'camera');
     }
 
     // Append user message to active chat stream
@@ -1305,6 +1252,8 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
              ================================================================= */}
           {activeTab === 'tools' && (
             <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar h-[420px]">
+              <CommandCatalog onExecuteCommand={(cmd) => handleSendMessage(cmd)} />
+
               <div>
                 <h3 className="text-xs font-black uppercase tracking-wider text-white flex items-center gap-1.5">
                   <Sliders size={14} className="text-emerald-400" /> Disciplinary Actions & System Tools

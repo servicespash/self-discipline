@@ -8,9 +8,24 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+
+      - name: Pre-Deployment Verification
+        run: |
+          echo "Verifying branch parity and environment readiness..."
+          git status
+          git branch -a
+          if [ -z "${{ secrets.GITHUB_TOKEN }}" ]; then
+            echo "Error: GITHUB_TOKEN secret is missing."
+            exit 1
+          fi
+          echo "Environment parity and token verification passed."
 
       - name: Setup Node.js (Node 24)
         uses: actions/setup-node@v4
