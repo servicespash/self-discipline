@@ -6,21 +6,22 @@ import { TaskFilterBar } from './tasks/TaskFilterBar';
 import { AddTaskForm } from './tasks/AddTaskForm';
 import { TaskList } from './tasks/TaskList';
 
+
+import { supabase } from '../utils/supabase';
+import { useSession } from '../context/SessionContext';
+
 export interface TaskItem {
   id: string;
+  user_uid: string;
   title: string;
-  dateStr: string;
-  startTime: string;
-  endTime: string;
+  date_str: string;
+  start_time: string;
+  end_time: string;
   status: 'needsAction' | 'inProgress' | 'completed';
   category: 'architecture' | 'engineering' | 'spiritual' | 'fitness' | 'deep_work';
   priority: 'critical' | 'high' | 'medium' | 'low';
-  source: 'local' | 'cloud' | 'calendar';
-  linkedRule?: string;
+  linked_rule?: string | null;
 }
-
-const LOCAL_TASKS_KEY = 'sdc_local_operations_v2';
-const CALENDAR_EVENTS_KEY = 'sdc_real_calendar_events_v2';
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -30,6 +31,7 @@ const MONTH_NAMES = [
 export default function TaskWidget({ accessToken }: { accessToken?: string | null }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { uid } = useSession();
   const today = useMemo(() => new Date(), []);
   const todayStr = useMemo(() => {
     return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
@@ -40,6 +42,26 @@ export default function TaskWidget({ accessToken }: { accessToken?: string | nul
   const [selectedMonth, setSelectedMonth] = useState<number>(today.getMonth());
   const [selectedYear, setSelectedYear] = useState<number>(today.getFullYear());
   const [timeRangeFilter, setTimeRangeFilter] = useState<'all' | 'morning' | 'afternoon' | 'evening'>('all');
+  const [tasks, setTasks] = useState<TaskItem[]>([]);
+
+  useEffect(() => {
+    if (!uid) return;
+
+    const fetchTasks = async () => {
+      const { data, error } = await supabase
+        .from('tasks')
+        .select('*')
+        .eq('user_uid', uid);
+      
+      if (error) {
+        console.error('Error fetching tasks:', error);
+      } else {
+        setTasks(data || []);
+      }
+    };
+
+    fetchTasks();
+  }, [uid]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -72,52 +94,6 @@ export default function TaskWidget({ accessToken }: { accessToken?: string | nul
       setTimeRangeFilter(rangeParam as any);
     }
   }, [location.search]);
-
-  const [tasks, setTasks] = useState<TaskItem[]>(() => {
-    try {
-      const saved = localStorage.getItem(LOCAL_TASKS_KEY);
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error('Task load error:', e);
-    }
-    return [
-      {
-        id: 't_1',
-        title: 'Review System Architecture & Core Cloudflare Headers',
-        dateStr: todayStr,
-        startTime: '09:00',
-        endTime: '11:00',
-        status: 'needsAction',
-        category: 'architecture',
-        priority: 'critical',
-        source: 'local',
-        linkedRule: 'social_media_block'
-      },
-      {
-        id: 't_2',
-        title: 'Physical Conditioning: Dumbbell Strength Protocol',
-        dateStr: todayStr,
-        startTime: '16:00',
-        endTime: '17:00',
-        status: 'needsAction',
-        category: 'fitness',
-        priority: 'high',
-        source: 'local',
-        linkedRule: 'focus_tone'
-      },
-      {
-        id: 't_3',
-        title: 'Canonical Prayer & Evening Scripture Contemplation',
-        dateStr: todayStr,
-        startTime: '18:00',
-        endTime: '18:45',
-        status: 'completed',
-        category: 'spiritual',
-        priority: 'medium',
-        source: 'local'
-      }
-    ];
-  });
 
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskDate, setNewTaskDate] = useState(todayStr);

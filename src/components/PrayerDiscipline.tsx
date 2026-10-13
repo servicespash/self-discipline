@@ -53,6 +53,8 @@ import {
   SpiritualTradition,
   SpiritualUserConfig
 } from '../utils/spiritualConfigService';
+import { useSession } from '../context/SessionContext';
+import { supabase } from '../utils/supabase';
 import QiblaCompass from './QiblaCompass';
 
 interface ChristianWatch {
@@ -140,26 +142,32 @@ export default function PrayerDiscipline() {
   // Audio Playback & Phrase Synchronization State
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [currentAdhanPhrase, setCurrentAdhanPhrase] = useState<AdhanPhrase | null>(null);
+  
+  const { user } = useSession();
 
   // Islamic completed prayers mapping
-  const [completedPrayers, setCompletedPrayers] = useState<Record<string, boolean>>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.ISLAMIC_COMPLETION);
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
-  });
+  const [completedPrayers, setCompletedPrayers] = useState<Record<string, boolean>>({});
 
   // Christian watches state
-  const [christianWatches, setChristianWatches] = useState<ChristianWatch[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.CHRISTIAN_WATCHES);
-      return saved ? JSON.parse(saved) : DEFAULT_CHRISTIAN_WATCHES;
-    } catch {
-      return DEFAULT_CHRISTIAN_WATCHES;
-    }
-  });
+  const [christianWatches, setChristianWatches] = useState<ChristianWatch[]>(DEFAULT_CHRISTIAN_WATCHES);
+
+  useEffect(() => {
+    if (!user) return;
+    
+    // Fetch logs from Supabase
+    const fetchLogs = async () => {
+        const { data, error } = await supabase
+            .from('spiritual_logs')
+            .select('*')
+            .eq('user_uid', user.id);
+        
+        if (data) {
+            // Transform data as needed
+        }
+    };
+    fetchLogs();
+  }, [user]);
+
 
   // Subscribe to central SpiritualConfigService
   useEffect(() => {

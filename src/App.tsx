@@ -4,7 +4,7 @@
  * App Execution Shell - Cymatic Architecture Root
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { HashRouter } from 'react-router-dom';
 import { SessionProvider, useSession } from './context/SessionContext';
 import Dashboard from './components/Dashboard';
@@ -36,6 +36,44 @@ const AppContent: React.FC = () => {
   const [legalModalTab, setLegalModalTab] = useState<LegalTabType | null>(null);
   const [referralInvite, setReferralInvite] = useState<ReferralResolution | null>(null);
 
+  // Deep linking & App-launch shortcut event interception wrapped in useCallback
+  const handleLaunchUrl = useCallback((urlStr: string) => {
+    try {
+      if (urlStr.includes('action=summon_rama') || urlStr.includes('open_rama')) {
+        setIsHubVisible(true);
+      }
+    } catch (err) {
+      console.error('[Launch] Intercept error:', err);
+    }
+  }, []);
+
+  // Intercept incoming dynamic referral link & track visit live against originating user in database
+  const checkReferral = useCallback(() => {
+    const incomingRefCode = extractReferralCodeFromUrl();
+    if (incomingRefCode) {
+      trackReferralVisit(incomingRefCode).then((res) => {
+        if (res.info) {
+          setReferralInvite(res.info);
+        } else {
+          setReferralInvite({
+            valid: true,
+            referralCode: incomingRefCode
+          });
+        }
+      });
+    } else {
+      try {
+        const savedMeta = localStorage.getItem(ACTIVE_REFERRER_META_KEY);
+        const pending = localStorage.getItem(PENDING_REFERRAL_CODE_KEY);
+        if (savedMeta) {
+          setReferralInvite(JSON.parse(savedMeta));
+        } else if (pending) {
+          setReferralInvite({ valid: true, referralCode: pending });
+        }
+      } catch {}
+    }
+  }, []);
+
   // Subscribe to DisciplineBridge State & Initialize Notifications
   useEffect(() => {
     const unsubscribe = DisciplineBridge.subscribe((state) => {
@@ -49,57 +87,15 @@ const AppContent: React.FC = () => {
       setBridgeReady(true);
     });
 
-    // Setup Rama Voice Continuous Wake Word ('Hi Rama', 'Hello Rama', 'Open display')
-    const unsubWakeWord = RamaVoice.onWakeWord(() => {
-      setIsHubVisible(true);
-    });
-    const handleWakeWordEvent = () => setIsHubVisible(true);
-    window.addEventListener('rama-wake-word', handleWakeWordEvent);
-    window.addEventListener('rama-activate-hub', handleWakeWordEvent);
-
     // Auto-start continuous background listening for wake words
     RamaVoice.startContinuousListening();
 
-    // Deep linking & App-launch shortcut event interception
-    const handleLaunchUrl = (urlStr: string) => {
-      try {
-        if (urlStr.includes('action=summon_rama') || urlStr.includes('open_rama')) {
-          setIsHubVisible(true);
-        }
-      } catch (err) {
-        console.error('[Launch] Intercept error:', err);
-      }
-    };
-
-    // Intercept incoming dynamic referral link & track visit live against originating user in database
-    const checkReferral = () => {
-      const incomingRefCode = extractReferralCodeFromUrl();
-      if (incomingRefCode) {
-        trackReferralVisit(incomingRefCode).then((res) => {
-          if (res.info) {
-            setReferralInvite(res.info);
-          } else {
-            setReferralInvite({
-              valid: true,
-              referralCode: incomingRefCode
-            });
-          }
-        });
-      } else {
-        try {
-          const savedMeta = localStorage.getItem(ACTIVE_REFERRER_META_KEY);
-          const pending = localStorage.getItem(PENDING_REFERRAL_CODE_KEY);
-          if (savedMeta) {
-            setReferralInvite(JSON.parse(savedMeta));
-          } else if (pending) {
-            setReferralInvite({ valid: true, referralCode: pending });
-          }
-        } catch {}
-      }
-    };
-
-    checkReferral();
-    handleLaunchUrl(window.location.href);
+    const handleWakeWordEvent = () => setIsHubVisible(true);
+    const unsubWakeWord = RamaVoice.onWakeWord(() => {
+      setIsHubVisible(true);
+    });
+    window.addEventListener('rama-wake-word', handleWakeWordEvent);
+    window.addEventListener('rama-activate-hub', handleWakeWordEvent);
 
     const onHashOrPop = () => {
       handleLaunchUrl(window.location.href);
@@ -108,9 +104,13 @@ const AppContent: React.FC = () => {
     window.addEventListener('hashchange', onHashOrPop);
     window.addEventListener('popstate', onHashOrPop);
 
+    // Initial check
+    checkReferral();
+    handleLaunchUrl(window.location.href);
+
     // Support W3C launchQueue API for PWA OS shortcut launch interception
-    if (typeof window !== 'undefined' && 'launchQueue' in window && (window as any).launchQueue) {
-      (window as any).launchQueue.setConsumer((launchParams: any) => {
+    if (typeof window !== 'undefined' && window.launchQueue) {
+      window.launchQueue.setConsumer((launchParams: any) => {
         if (launchParams && launchParams.targetURL) {
           handleLaunchUrl(launchParams.targetURL);
         }
@@ -125,12 +125,12 @@ const AppContent: React.FC = () => {
       window.removeEventListener('hashchange', onHashOrPop);
       window.removeEventListener('popstate', onHashOrPop);
     };
-  }, []);
+  }, [handleLaunchUrl, checkReferral]);
 
   const handleSignInSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputEmail.trim()) return;
-    signIn(inputEmail, inputMoniker || 'Isabirye Latif (Solo Architect)', 'User');
+    signIn(inputEmail, inputMoniker || 'Discipline Champion', 'User');
   };
 
   if (loading || !bridgeReady) {

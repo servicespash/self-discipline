@@ -5,6 +5,8 @@
  * Connects directly to native Android Capacitor bridge or persisted device package authority registry.
  */
 
+import { supabase } from './supabase';
+
 export interface AppPackageInfo {
   packageName: string;
   appName: string;
@@ -118,9 +120,9 @@ export class PackageManager {
    */
   public static async fetchAllApps(): Promise<AppPackageInfo[]> {
     // 1. Check native Android Capacitor DisciplineNative plugin
-    if (typeof window !== 'undefined' && (window as any).Capacitor?.isPluginAvailable('DisciplineNative')) {
+    if (typeof window !== 'undefined' && window.Capacitor?.isPluginAvailable('DisciplineNative')) {
       try {
-        const nativeResult = await (window as any).Capacitor.Plugins.DisciplineNative.fetchInstalledApps();
+        const nativeResult = await window.Capacitor.Plugins.DisciplineNative.fetchInstalledApps();
         const parsed = typeof nativeResult === 'string' ? JSON.parse(nativeResult) : nativeResult;
         if (Array.isArray(parsed) && parsed.length > 0) {
           return parsed.map((app: any) => ({
@@ -141,6 +143,24 @@ export class PackageManager {
     return this.getUserConfiguredApps();
   }
 
+  public static async syncFromRemoteAppSettings(userUid: string): Promise<AppPackageInfo[] | null> {
+    try {
+      const { data, error } = await supabase
+        .from('app_settings')
+        .select('allowed_apps')
+        .eq('user_uid', userUid)
+        .maybeSingle();
+
+      if (!error && data && Array.isArray(data.allowed_apps) && data.allowed_apps.length > 0) {
+        localStorage.setItem(CONFIGURED_APPS_KEY, JSON.stringify(data.allowed_apps));
+        return data.allowed_apps as AppPackageInfo[];
+      }
+    } catch (err) {
+      console.warn('[PackageManager] Remote sync error:', err);
+    }
+    return null;
+  }
+
   public static getUserConfiguredApps(): AppPackageInfo[] {
     try {
       const saved = localStorage.getItem(CONFIGURED_APPS_KEY);
@@ -159,11 +179,23 @@ export class PackageManager {
     return BASELINE_REAL_PACKAGES;
   }
 
-  public static saveUserConfiguredApps(apps: AppPackageInfo[]): void {
+  public static saveUserConfiguredApps(apps: AppPackageInfo[], userUid?: string): void {
     try {
       localStorage.setItem(CONFIGURED_APPS_KEY, JSON.stringify(apps));
     } catch (e) {
       console.error('[PackageManager] Failed to save package registry:', e);
+    }
+
+    if (userUid) {
+      try {
+        supabase.from('app_settings').upsert({
+          user_uid: userUid,
+          allowed_apps: apps,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'user_uid' }).then(({ error }) => {
+          if (error) console.warn('[PackageManager] Remote app settings sync note:', error.message);
+        });
+      } catch {}
     }
   }
 

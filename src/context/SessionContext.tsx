@@ -1,162 +1,324 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- * Supabase-Powered Session & Institutional User Authentication Engine
- * Includes real-time auth state change listener and automatic role-based session synchronization.
- */
-
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { LocalUserSession, SessionContextType } from '../types/session';
-import { recordReferralRedemption } from '../utils/licensing';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { supabase } from '../utils/supabase';
+import { User } from '@supabase/supabase-js';
+import { LocalUserSession, SessionContextType } from '../types/session';
+import { recordReferralRedemption, PENDING_REFERRAL_CODE_KEY } from '../utils/licensing';
 
-const STORAGE_KEY = 'sdc_user_session_v1';
+const SESSION_STORAGE_KEY = 'cymatic_session_v2';
 
-const SessionContext = createContext<SessionContextType | undefined>(undefined);
+const SessionContext = createContext<SessionContextType>({
+  session: null,
+  user: null,
+  uid: null,
+  loading: true,
+  signIn: async () => {},
+  signOut: async () => {},
+  setOnboardingComplete: () => {},
+  updateProfile: async () => {},
+});
 
-export const SessionProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+function createSyntheticUser(uid: string, email: string, moniker?: string): User {
+  return {
+    id: uid,
+    email: email,
+    app_metadata: {},
+    user_metadata: { moniker: moniker || 'Discipline Champion' },
+    aud: 'authenticated',
+    created_at: new Date().toISOString(),
+  } as unknown as User;
+}
+
+export const SessionProvider = ({ children }: { children: React.ReactNode }) => {
   const [session, setSession] = useState<LocalUserSession | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  // Syncs DB role, tier, and profile from Supabase tables
+  const syncWithSupabase = useCallback(async (uid: string, email: string, currentMoniker?: string) => {
+    try {
+      // 1. Fetch from public.users
+      const { data: dbUser } = await supabase
+        .from('users')
+        .select('*')
+        .or(`uid.eq.${uid},email.eq.${email.toLowerCase()}`)
+        .maybeSingle();
+
+      // 2. Fetch tier from public.licenses
+      const { data: dbLicense } = await supabase
+        .from('licenses')
+        .select('*')
+        .eq('owner_uid', uid)
+        .maybeSingle();
+
+      const finalMoniker = dbUser?.moniker || currentMoniker || 'Discipline Champion';
+      const finalRole = dbUser?.role || 'student';
+      const finalTier = dbLicense?.tier || 'Individual';
+      const isReseller = dbUser?.role === 'reseller' || dbLicense?.tier === 'Reseller Pro';
+
+      setSession((prev) => {
+        if (!prev) return null;
+        const updated: LocalUserSession = {
+          ...prev,
+          moniker: finalMoniker,
+          role: finalRole,
+          tier: finalTier,
+          isReseller,
+        };
+        try {
+          localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(updated));
+        } catch {}
+        return updated;
+      });
+    } catch (err) {
+      console.warn('[SessionContext] Background sync warning:', err);
+    }
+  }, []);
 
   useEffect(() => {
+    let isMounted = true;
+
     async function initSession() {
       try {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) {
-          const parsed: LocalUserSession = JSON.parse(saved);
-          setSession(parsed);
-          // Verify or sync with Supabase users table
-          await supabase.from('users').upsert({
-            uid: parsed.uid,
-            email: parsed.email,
-            moniker: parsed.moniker,
-            role: parsed.role.toLowerCase()
-          }, { onConflict: 'uid' });
+        // 1. Check native Supabase Auth session first
+        const { data: { session: authSession } } = await supabase.auth.getSession();
+        
+        if (authSession?.user && isMounted) {
+          const authUser = authSession.user;
+          const userUid = authUser.id;
+          const userEmail = authUser.email || '';
+
+          const restoredSession: LocalUserSession = {
+            uid: userUid,
+            email: userEmail,
+            moniker: authUser.user_metadata?.moniker || 'Discipline Champion',
+            role: 'User',
+            tier: 'free',
+            signedInAt: Date.now(),
+            lastActiveAt: Date.now(),
+            isOnboardingComplete: true,
+          };
+
+          setUser(authUser);
+          setSession(restoredSession);
+          localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(restoredSession));
+          syncWithSupabase(userUid, userEmail, restoredSession.moniker);
+          return;
         }
-      } catch (e) {
-        console.error('[SessionContext] Error initializing session:', e);
+
+        // 2. Check cached local workspace session
+        const cachedRaw = localStorage.getItem(SESSION_STORAGE_KEY);
+        if (cachedRaw && isMounted) {
+          try {
+            const cached: LocalUserSession = JSON.parse(cachedRaw);
+            if (cached && cached.uid && cached.email) {
+              setSession(cached);
+              setUser(createSyntheticUser(cached.uid, cached.email, cached.moniker));
+              syncWithSupabase(cached.uid, cached.email, cached.moniker);
+              return;
+            }
+          } catch (e) {
+            console.warn('[SessionContext] Cache parse error:', e);
+          }
+        }
+      } catch (err) {
+        console.error('[SessionContext] Init error:', err);
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     }
+
     initSession();
 
-    // Setup Supabase auth state change listener for real-time session synchronization
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, authSession) => {
-      if (authSession?.user) {
-        const user = authSession.user;
-        const email = user.email || 'architect@cymatic.local';
-        const moniker = user.user_metadata?.moniker || email.split('@')[0];
-        const role = (user.user_metadata?.role || 'user') as any;
-        const uid = `usr_${user.id.replace(/-/g, '').slice(0, 16)}`;
-        
-        const now = Date.now();
-        const activeSession: LocalUserSession = {
-          uid,
-          email,
-          moniker,
-          role: role.charAt(0).toUpperCase() + role.slice(1),
+    // 3. Listen to Supabase Auth state changes live
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, newAuthSession) => {
+      if (!isMounted) return;
+      if (newAuthSession?.user) {
+        const authUser = newAuthSession.user;
+        const restoredSession: LocalUserSession = {
+          uid: authUser.id,
+          email: authUser.email || '',
+          moniker: authUser.user_metadata?.moniker || 'Discipline Champion',
+          role: 'User',
           tier: 'free',
-          signedInAt: now,
-          lastActiveAt: now,
-          isOnboardingComplete: true
+          signedInAt: Date.now(),
+          lastActiveAt: Date.now(),
+          isOnboardingComplete: true,
         };
-        setSession(activeSession);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(activeSession));
-
-        await supabase.from('users').upsert({
-          uid,
-          email,
-          moniker,
-          role: role.toLowerCase(),
-          tier: 'free'
-        }, { onConflict: 'uid' });
-      } else if (event === 'SIGNED_OUT') {
-        setSession(null);
-        localStorage.removeItem(STORAGE_KEY);
+        setUser(authUser);
+        setSession(restoredSession);
+        localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(restoredSession));
+        syncWithSupabase(authUser.id, authUser.email || '', restoredSession.moniker);
       }
     });
 
     return () => {
+      isMounted = false;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [syncWithSupabase]);
 
-  const signIn = async (email: string, moniker: string, role: 'User' | 'Student' | 'Guardian' | 'Trainer' | 'Administrator') => {
+  const signIn = async (
+    email: string,
+    moniker: string = 'Discipline Champion',
+    role: string = 'User'
+  ) => {
+    setLoading(true);
     const cleanEmail = email.trim().toLowerCase();
-    const formattedMoniker = moniker.trim() || cleanEmail.split('@')[0] || 'Architect';
-    const now = Date.now();
-    // Deterministic UID derived from institutional email to ensure persistent ownership in database
-    const emailHash = btoa(cleanEmail).replace(/[^a-zA-Z0-9]/g, '').slice(0, 16);
-    const deterministicUid = `usr_${emailHash}`;
+    const cleanMoniker = moniker.trim() || 'Discipline Champion';
 
-    // Record referral redemption against originating user in database if incoming referral is pending
-    const redemptionResult = await recordReferralRedemption(deterministicUid, cleanEmail, formattedMoniker);
-
-    // Sync/upsert user record to Supabase database table
     try {
-      await supabase.from('users').upsert({
-        uid: deterministicUid,
+      // 1. Check or register user in public.users
+      let resolvedUid = '';
+      let resolvedRole = role;
+      let resolvedTier = 'free';
+
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('*')
+        .eq('email', cleanEmail)
+        .maybeSingle();
+
+      if (existingUser) {
+        resolvedUid = existingUser.uid;
+        resolvedRole = existingUser.role || role;
+      } else {
+        resolvedUid = crypto.randomUUID();
+        try {
+          await supabase.from('users').insert({
+            uid: resolvedUid,
+            email: cleanEmail,
+            moniker: cleanMoniker,
+            role: resolvedRole.toLowerCase(),
+          });
+        } catch (dbErr) {
+          console.warn('[SessionContext] User registration warning:', dbErr);
+        }
+      }
+
+      // 2. Fetch real subscription tier / reseller status from public.licenses
+      const { data: licenseData } = await supabase
+        .from('licenses')
+        .select('*')
+        .eq('owner_uid', resolvedUid)
+        .maybeSingle();
+
+      if (licenseData) {
+        resolvedTier = licenseData.tier || 'Team';
+      }
+
+      // 3. Check for any pending referral redemption
+      let pendingReferralCode: string | undefined = undefined;
+      try {
+        const pendingRef = localStorage.getItem(PENDING_REFERRAL_CODE_KEY);
+        if (pendingRef) {
+          pendingReferralCode = pendingRef;
+          await recordReferralRedemption(resolvedUid, cleanEmail, cleanMoniker);
+        }
+      } catch {}
+
+      const newSession: LocalUserSession = {
+        uid: resolvedUid,
         email: cleanEmail,
-        moniker: formattedMoniker,
-        role: role.toLowerCase()
-      }, { onConflict: 'uid' });
+        moniker: cleanMoniker,
+        role: resolvedRole,
+        tier: resolvedTier,
+        signedInAt: Date.now(),
+        lastActiveAt: Date.now(),
+        isOnboardingComplete: true,
+        referredBy: pendingReferralCode,
+        isReseller: resolvedRole === 'reseller' || resolvedTier === 'Reseller Pro',
+      };
+
+      const syntheticUser = createSyntheticUser(resolvedUid, cleanEmail, cleanMoniker);
+
+      setUser(syntheticUser);
+      setSession(newSession);
+      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(newSession));
     } catch (err) {
-      console.warn('[SessionContext] Supabase user upsert warning:', err);
-    }
-
-    const newSession: LocalUserSession = {
-      uid: deterministicUid,
-      email: cleanEmail,
-      moniker: formattedMoniker,
-      role: role,
-      tier: 'free',
-      signedInAt: now,
-      lastActiveAt: now,
-      referredBy: redemptionResult.redeemed ? redemptionResult.referralCode : undefined,
-      referrerMoniker: redemptionResult.redeemed ? redemptionResult.ownerMoniker : undefined
-    };
-
-    setSession(newSession);
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(newSession));
-    } catch (e) {
-      console.error('[SessionContext] Failed to save session:', e);
+      console.error('[SessionContext] signIn error:', err);
+      // Resilient local fallback
+      const fallbackUid = crypto.randomUUID();
+      const fallbackSession: LocalUserSession = {
+        uid: fallbackUid,
+        email: cleanEmail,
+        moniker: cleanMoniker,
+        role: role,
+        tier: 'free',
+        signedInAt: Date.now(),
+        lastActiveAt: Date.now(),
+        isOnboardingComplete: true,
+      };
+      setUser(createSyntheticUser(fallbackUid, cleanEmail, cleanMoniker));
+      setSession(fallbackSession);
+      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(fallbackSession));
+    } finally {
+      setLoading(false);
     }
   };
 
-  const signOut = () => {
-    setSession(null);
+  const signOut = async () => {
     try {
-      localStorage.removeItem(STORAGE_KEY);
-      localStorage.removeItem('sdc_locked_spiritual_tradition');
+      await supabase.auth.signOut();
     } catch (e) {
-      console.error('[SessionContext] Failed to purge session:', e);
+      console.warn('[SessionContext] Supabase signOut note:', e);
     }
+    localStorage.removeItem(SESSION_STORAGE_KEY);
+    setSession(null);
+    setUser(null);
   };
 
   const setOnboardingComplete = (completed: boolean) => {
-    if (!session) return;
-    const updatedSession = { ...session, isOnboardingComplete: completed };
-    setSession(updatedSession);
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedSession));
-    } catch (e) {
-      console.error('[SessionContext] Failed to save session:', e);
+    setSession((prev) => {
+      if (!prev) return null;
+      const updated = { ...prev, isOnboardingComplete: completed };
+      try {
+        localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  };
+
+  const updateProfile = async (updates: Partial<LocalUserSession>) => {
+    setSession((prev) => {
+      if (!prev) return null;
+      const updated = { ...prev, ...updates };
+      try {
+        localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+
+    if (session?.uid && (updates.moniker || updates.role)) {
+      try {
+        await supabase
+          .from('users')
+          .update({
+            moniker: updates.moniker ?? session.moniker,
+            role: updates.role ? String(updates.role).toLowerCase() : undefined,
+          })
+          .eq('uid', session.uid);
+      } catch (err) {
+        console.warn('[SessionContext] Profile update DB warning:', err);
+      }
     }
   };
 
+  const contextValue: SessionContextType = {
+    session,
+    user,
+    uid: session?.uid ?? user?.id ?? null,
+    loading,
+    signIn,
+    signOut,
+    setOnboardingComplete,
+    updateProfile,
+  };
+
   return (
-    <SessionContext.Provider value={{ session, loading, signIn, signOut, setOnboardingComplete }}>
+    <SessionContext.Provider value={contextValue}>
       {children}
     </SessionContext.Provider>
   );
 };
 
-export const useSession = (): SessionContextType => {
-  const context = useContext(SessionContext);
-  if (!context) {
-    throw new Error('useSession must be used within a SessionProvider');
-  }
-  return context;
-};
+export const useSession = () => useContext(SessionContext);

@@ -5,112 +5,97 @@ import { BalanceDisplay } from './wallet/BalanceDisplay';
 import { TransactionForm } from './wallet/TransactionForm';
 import { AllocationPillars } from './wallet/AllocationPillars';
 import { TransactionHistory } from './wallet/TransactionHistory';
+import { useSession } from '../context/SessionContext';
+import { supabase } from '../utils/supabase';
 
 export interface Transaction {
   id: string;
+  user_uid: string;
   amount: number;
   type: 'cash_in' | 'expense';
   category: 'savings' | 'operations' | 'investment' | 'unintended';
   note: string;
-  timestamp: number;
+  timestamp: string;
 }
-
-export interface WalletStorage {
-  cashOnHand: number;
-  currency: string;
-  transactions: Transaction[];
-}
-
-const STORAGE_KEY = 'sdc_wallet_discipline_v2';
-
-const INITIAL_WALLET: WalletStorage = {
-  cashOnHand: 10000,
-  currency: 'UGX',
-  transactions: [
-    {
-      id: 'init_1',
-      amount: 10000,
-      type: 'cash_in',
-      category: 'operations',
-      note: 'Initial Cash in Hand Report',
-      timestamp: Date.now()
-    }
-  ]
-};
 
 export default function WalletDiscipline({ data }: { data?: any }) {
-  const [wallet, setWallet] = useState<WalletStorage>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      return saved ? JSON.parse(saved) : INITIAL_WALLET;
-    } catch {
-      return INITIAL_WALLET;
-    }
-  });
-
+  const { user } = useSession();
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [cashOnHand, setCashOnHand] = useState<number>(0);
   const [mode, setMode] = useState<'view' | 'deposit' | 'expense'>('view');
   const [amountInput, setAmountInput] = useState<string>('');
   const [categoryInput, setCategoryInput] = useState<'savings' | 'operations' | 'investment' | 'unintended'>('operations');
   const [noteInput, setNoteInput] = useState<string>('');
 
-  const breakdown = useWalletBreakdown(wallet.cashOnHand);
+  const breakdown = useWalletBreakdown(cashOnHand);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(wallet));
-    } catch (e) {
-      console.error('Wallet Storage Save Failed:', e);
-    }
-  }, [wallet]);
+    if (!user) return;
 
-  const unintendedTotal = wallet.transactions
+    const fetchTransactions = async () => {
+      const { data, error } = await supabase
+        .from('wallet_transactions')
+        .select('*')
+        .eq('user_uid', user.id)
+        .order('timestamp', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching transactions:', error);
+        return;
+      }
+
+      setTransactions(data as Transaction[]);
+      
+      const balance = (data as Transaction[]).reduce((sum, t) => {
+        return t.type === 'cash_in' ? sum + Number(t.amount) : sum - Number(t.amount);
+      }, 0);
+      setCashOnHand(balance);
+    };
+
+    fetchTransactions();
+  }, [user]);
+
+  const unintendedTotal = transactions
       .filter(t => t.type === 'expense' && t.category === 'unintended')
-      .reduce((sum, t) => sum + t.amount, 0);
+      .reduce((sum, t) => sum + Number(t.amount), 0);
 
-  const handleDeposit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleTransaction = async (type: 'cash_in' | 'expense') => {
+    if (!user) return;
     const val = parseFloat(amountInput);
     if (isNaN(val) || val <= 0) return;
 
-    const newTx: Transaction = {
-      id: `tx_${Date.now()}`,
+    const newTx = {
+      user_uid: user.id,
       amount: val,
-      type: 'cash_in',
+      type,
       category: categoryInput,
-      note: noteInput.trim() || 'Cash In Hand Reported',
-      timestamp: Date.now()
+      note: noteInput.trim() || (type === 'cash_in' ? 'Cash In Hand' : 'Expenditure'),
+      timestamp: new Date().toISOString()
     };
 
-    setWallet(prev => ({
-      ...prev,
-      cashOnHand: prev.cashOnHand + val,
-      transactions: [newTx, ...prev.transactions]
-    }));
+    const { error } = await supabase
+      .from('wallet_transactions')
+      .insert([newTx]);
 
-    setAmountInput('');
-    setNoteInput('');
-    setMode('view');
-  };
+    if (error) {
+      console.error('Error adding transaction:', error);
+      return;
+    }
 
-  const handleExpense = (e: React.FormEvent) => {
-    e.preventDefault();
-    const val = parseFloat(amountInput);
-    if (isNaN(val) || val <= 0) return;
+    // Refresh transactions
+    const { data: updatedData } = await supabase
+      .from('wallet_transactions')
+      .select('*')
+      .eq('user_uid', user.id)
+      .order('timestamp', { ascending: false });
 
-    const newTx: Transaction = {
-      id: `tx_${Date.now()}`,
-      amount: val,
-      type: 'expense',
-      category: categoryInput,
-      note: noteInput.trim() || 'Expenditure',
-      timestamp: Date.now()
-    };
-
-    setWallet(prev => ({
-      ...prev,
-      cashOnHand: Math.max(0, prev.cashOnHand - val),
-      transactions: [newTx, ...prev.transactions]
-    }));
+    if (updatedData) {
+      setTransactions(updatedData as Transaction[]);
+      const balance = (updatedData as Transaction[]).reduce((sum, t) => {
+        return t.type === 'cash_in' ? sum + Number(t.amount) : sum - Number(t.amount);
+      }, 0);
+      setCashOnHand(balance);
+    }
 
     setAmountInput('');
     setNoteInput('');
@@ -119,19 +104,18 @@ export default function WalletDiscipline({ data }: { data?: any }) {
 
   return (
     <div className="bg-gray-900 p-6 rounded-3xl border border-gray-800 shadow-xl space-y-6">
-      {/* Header Bar */}
       <div className="flex justify-between items-center">
         <h3 className="text-sm font-black text-white uppercase tracking-widest flex items-center gap-2">
           <Wallet size={18} className="text-emerald-400" /> Capital Control Matrix
         </h3>
         <span className="px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-black text-[10px] uppercase rounded-full">
-          {wallet.currency} Active
+          UGX Active
         </span>
       </div>
 
       <BalanceDisplay 
-        cashOnHand={wallet.cashOnHand}
-        currency={wallet.currency}
+        cashOnHand={cashOnHand}
+        currency={'UGX'}
         unintendedTotal={unintendedTotal}
         mode={mode}
         setMode={setMode}
@@ -146,14 +130,14 @@ export default function WalletDiscipline({ data }: { data?: any }) {
           setCategoryInput={setCategoryInput}
           noteInput={noteInput}
           setNoteInput={setNoteInput}
-          onSubmit={mode === 'deposit' ? handleDeposit : handleExpense}
+          onSubmit={() => handleTransaction(mode === 'deposit' ? 'cash_in' : 'expense')}
           onCancel={() => setMode('view')}
-          currency={wallet.currency}
+          currency={'UGX'}
         />
       )}
 
-      <AllocationPillars breakdown={breakdown} currency={wallet.currency} />
-      <TransactionHistory transactions={wallet.transactions} currency={wallet.currency} />
+      <AllocationPillars breakdown={breakdown} currency={'UGX'} />
+      <TransactionHistory transactions={transactions} currency={'UGX'} />
     </div>
   );
 }

@@ -7,7 +7,7 @@
 export interface DeviceAppRecord {
   id: string; // Android package name e.g. com.instagram.android
   name: string; // App label e.g. Instagram
-  category: 'social' | 'entertainment' | 'messaging' | 'productivity' | 'system';
+  category: 'social' | 'entertainment' | 'gaming' | 'messaging' | 'productivity' | 'system';
   dopamineLevel: 'extreme' | 'high' | 'moderate' | 'low' | 'neutral';
   isSystem?: boolean;
   defaultRestricted?: boolean;
@@ -116,9 +116,9 @@ class DisciplineBridgeEngine {
 
 
   private async dispatchNativeInterception(active: boolean) {
-    if (typeof window !== 'undefined' && (window as any).Capacitor?.isPluginAvailable('DisciplineNative')) {
+    if (typeof window !== 'undefined' && window.Capacitor?.isPluginAvailable('DisciplineNative')) {
       try {
-        const plugin = (window as any).Capacitor.Plugins.DisciplineNative;
+        const plugin = window.Capacitor.Plugins.DisciplineNative;
         if (active) {
           await plugin.suppressNotifications({ suppress: true });
           await plugin.enforceIntentInterception({ active: true, packages: this.lockdownState.restrictedPackages });
@@ -136,6 +136,18 @@ class DisciplineBridgeEngine {
     return SOCIAL_MEDIA_PACKAGES.includes(packageId);
   }
 
+  public async terminateLockdown(): Promise<void> {
+    if (this.lockdownState.active && Date.now() < this.lockdownState.endTime) {
+      console.warn('Security Violation: Attempted early termination of lockdown - rejection enforced');
+      // Keep native suppression and intent interception active
+      await this.dispatchNativeInterception(true);
+      return;
+    }
+    this.lockdownState.active = false;
+    this.lockdownState.endTime = 0;
+    this.saveState();
+  }
+
   public async initiateLockdown(
     durationMinutes: number, 
     packagesCsv?: string,
@@ -143,10 +155,13 @@ class DisciplineBridgeEngine {
   ): Promise<SystemLockdownPayload> {
     const now = Date.now();
     const endTime = now + durationMinutes * 60 * 1000;
-    let restricted = packagesCsv ? packagesCsv.split(',').map(s => s.trim()).filter(Boolean) : [];
+    const pkgRegex = /^[a-zA-Z0-9_]+(\.[a-zA-Z0-9_]+)+$/;
+    let restricted = packagesCsv 
+      ? packagesCsv.split(',').map(s => s.trim()).filter(p => pkgRegex.test(p))
+      : [];
 
     // If a specific social app is allowed, ensure it's not in the restricted list
-    if (allowedSocialPkg) {
+    if (allowedSocialPkg && pkgRegex.test(allowedSocialPkg)) {
       restricted = restricted.filter(p => p !== allowedSocialPkg);
     }
 
@@ -162,24 +177,18 @@ class DisciplineBridgeEngine {
     this.saveState();
     
     // Activate VPN and system lockdown
-    if (typeof window !== 'undefined' && (window as any).Capacitor?.isPluginAvailable('DisciplineNative')) {
-      const plugin = (window as any).Capacitor.Plugins.DisciplineNative;
+    if (typeof window !== 'undefined' && window.Capacitor?.isPluginAvailable('DisciplineNative')) {
+      const plugin = window.Capacitor.Plugins.DisciplineNative;
       await plugin.startVpnTunnel();
     }
     
     return this.lockdownState;
   }
 
-  public async terminateLockdown(): Promise<void> {
-    this.lockdownState.active = false;
-    this.lockdownState.endTime = 0;
-    this.saveState();
-  }
-
   public async checkPermissions(): Promise<boolean> {
-    if (typeof window !== 'undefined' && (window as any).Capacitor?.isPluginAvailable('DisciplineNative')) {
+    if (typeof window !== 'undefined' && window.Capacitor?.isPluginAvailable('DisciplineNative')) {
       try {
-        return await (window as any).Capacitor.Plugins.DisciplineNative.checkPermissions();
+        return await window.Capacitor.Plugins.DisciplineNative.checkPermissions();
       } catch (e) {
         console.error('[DisciplineBridge] Native permission check failed:', e);
       }
@@ -187,16 +196,75 @@ class DisciplineBridgeEngine {
     return true;
   }
 
+  public categorizePackageName(pkgName: string): {
+    category: 'social' | 'entertainment' | 'gaming' | 'messaging' | 'productivity' | 'system';
+    dopamineLevel: 'extreme' | 'high' | 'moderate' | 'low' | 'neutral';
+  } {
+    const lower = pkgName.toLowerCase();
+    if (
+      lower.includes('whatsapp') ||
+      lower.includes('telegram') ||
+      lower.includes('signal') ||
+      lower.includes('messaging') ||
+      lower.includes('messenger')
+    ) {
+      return { category: 'messaging', dopamineLevel: 'moderate' };
+    }
+    if (
+      lower.includes('instagram') ||
+      lower.includes('musically') ||
+      lower.includes('tiktok') ||
+      lower.includes('twitter') ||
+      lower.includes('facebook') ||
+      lower.includes('snapchat') ||
+      lower.includes('reddit') ||
+      lower.includes('pinterest')
+    ) {
+      return { category: 'social', dopamineLevel: 'extreme' };
+    }
+    if (
+      lower.includes('youtube') ||
+      lower.includes('netflix') ||
+      lower.includes('spotify') ||
+      lower.includes('twitch') ||
+      lower.includes('hulu') ||
+      lower.includes('disney')
+    ) {
+      return { category: 'entertainment', dopamineLevel: 'high' };
+    }
+    if (
+      lower.includes('game') ||
+      lower.includes('supercell') ||
+      lower.includes('roblox') ||
+      lower.includes('minecraft') ||
+      lower.includes('epicgames')
+    ) {
+      return { category: 'gaming', dopamineLevel: 'extreme' };
+    }
+    if (
+      lower.includes('android.settings') ||
+      lower.includes('dialer') ||
+      lower.includes('system') ||
+      lower.includes('contacts')
+    ) {
+      return { category: 'system', dopamineLevel: 'neutral' };
+    }
+    return { category: 'productivity', dopamineLevel: 'low' };
+  }
+
   public async fetchInstalledApps(): Promise<DeviceAppRecord[]> {
-    if (typeof window !== 'undefined' && (window as any).Capacitor?.isPluginAvailable('DisciplineNative')) {
+    if (typeof window !== 'undefined' && window.Capacitor?.isPluginAvailable('DisciplineNative')) {
       try {
-        const result = await (window as any).Capacitor.Plugins.DisciplineNative.fetchInstalledApps();
-        const parsed = JSON.parse(result).map((app: any) => ({
-          id: app.packageName,
-          name: app.name,
-          category: SOCIAL_MEDIA_PACKAGES.includes(app.packageName) ? 'social' : 'productivity',
-          dopamineLevel: SOCIAL_MEDIA_PACKAGES.includes(app.packageName) ? 'extreme' : 'low'
-        }));
+        const result = await window.Capacitor.Plugins.DisciplineNative.fetchInstalledApps();
+        const parsed = JSON.parse(result).map((app: any) => {
+          const scoring = this.categorizePackageName(app.packageName || '');
+          return {
+            id: app.packageName,
+            name: app.name,
+            category: scoring.category,
+            dopamineLevel: scoring.dopamineLevel
+          };
+        });
         if (parsed.length > 0) {
           return parsed;
         }
