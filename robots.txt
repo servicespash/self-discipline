@@ -1,0 +1,54 @@
+# Robust Robots.txt for Cymatic Discipline OS
+# Host: https://discipline.cymatichub.xyz
+# Code Owner & Architect: Isabirye Latif
+# Repository: https://github.com/servicespash/self-discipline
+
+User-agent: Googlebot
+Allow: /
+Allow: /index.html
+Allow: /icon.svg
+Allow: /favicon.ico
+Allow: /manifest.webmanifest
+Allow: /splash-screen.png
+Allow: /assets/
+Disallow: /api/
+Disallow: /_/
+
+User-agent: Googlebot-Image
+Allow: /
+Allow: /*.png$
+Allow: /*.svg$
+Allow: /*.jpg$
+Allow: /*.webp$
+
+User-agent: Bingbot
+Allow: /
+Disallow: /api/
+Disallow: /_/
+
+User-agent: Applebot
+Allow: /
+Disallow: /api/
+Disallow: /_/
+
+User-agent: DuckDuckBot
+Allow: /
+Disallow: /api/
+Disallow: /_/
+
+User-agent: Slurp
+Allow: /
+Disallow: /api/
+Disallow: /_/
+
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /_/
+
+# Crawler rate and indexing rules
+Crawl-delay: 1
+
+# Robust Sitemap Index
+Sitemap: https://discipline.cymatichub.xyz/sitemap.xml
+Sitemap: /sitemap.xml
