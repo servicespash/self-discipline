@@ -10,7 +10,7 @@ export class GatewayError extends Error {
 export async function streamChatText(messages: GeminiMsg[], system: string): Promise<string> {
   const key = process.env.LOVABLE_API_KEY;
   if (!key) throw new GatewayError(500, "AI is not configured");
-  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+  const res = await fetch("https://ai.gateway.lovable.dev/v1/responses", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -18,10 +18,12 @@ export async function streamChatText(messages: GeminiMsg[], system: string): Pro
       "X-Lovable-AIG-SDK": "fetch",
     },
     body: JSON.stringify({
-      model: "google/gemini-2.5-flash",
+      model: "openai/gpt-6-astra",
       stream: true,
-      messages: [
-        { role: "system", content: system },
+      store: false,
+      reasoning: { effort: "low" },
+      instructions: system,
+      input: [
         ...messages.map((m) => ({
           role: m.role === "assistant" || m.role === "model" ? "assistant" : "user",
           content: (m.parts ?? []).map((p) => p.text ?? "").join("\n"),
@@ -49,7 +51,8 @@ export async function streamChatText(messages: GeminiMsg[], system: string): Pro
       const data = t.slice(5).trim();
       if (data === "[DONE]") continue;
       try {
-        out += JSON.parse(data).choices?.[0]?.delta?.content ?? "";
+        const ev = JSON.parse(data);
+        if (ev.type === "response.output_text.delta") out += ev.delta ?? "";
       } catch {
         /* partial */
       }
