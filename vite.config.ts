@@ -10,6 +10,9 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg', 'icon.svg', 'splash-screen.png'],
       manifest: {
         id: '/',
@@ -180,7 +183,8 @@ export default defineConfig({
         ]
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}']
+        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        maximumFileSizeToCacheInBytes: 5000000
       },
       devOptions: {
         enabled: true,
@@ -190,7 +194,20 @@ export default defineConfig({
   ],
   build: {
     minify: 'esbuild',
-    target: 'esnext'
+    target: 'esnext',
+    chunkSizeWarningLimit: 2000,
+    rollupOptions: {
+      external: [/^core-js\/.*/],
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('lucide-react')) return 'vendor-lucide';
+            if (id.includes('html2canvas') || id.includes('jspdf')) return 'vendor-pdf';
+            return 'vendor';
+          }
+        }
+      }
+    }
   },
   server: {
     hmr: false

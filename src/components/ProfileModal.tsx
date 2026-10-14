@@ -90,7 +90,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-gray-950/85 backdrop-blur-lg animate-in fade-in duration-200">
-      <div className="w-full max-w-lg h-[90vh] bg-gray-900 border border-gray-800 rounded-3xl shadow-2xl text-gray-100 flex flex-col">
+      <div className="w-full max-w-3xl h-[90vh] bg-gray-900 border border-gray-800 rounded-3xl shadow-2xl text-gray-100 flex flex-col">
         
         {/* Header & Navigation Tabs */}
         <div className="p-4 md:p-6 border-b border-gray-800 flex items-center justify-between bg-gray-950/60">

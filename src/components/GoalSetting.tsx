@@ -35,7 +35,7 @@ const RULES_STORAGE_KEY = 'sdc_system_rules_v1';
 const INITIAL_GOALS: ObjectiveGoal[] = [
   {
     id: 'goal_1',
-    title: 'Deploy Cymatic Hub & Resonance Core Modules',
+    title: 'Deploy Cymatic Discipline OS Governance Core',
     type: 'timeline',
     priority: 'high',
     startDate: new Date().toISOString().split('T')[0],
@@ -172,7 +172,7 @@ export default function GoalSetting() {
                 type="text"
                 value={titleInput}
                 onChange={(e) => setTitleInput(e.target.value)}
-                placeholder="e.g. Complete Cymatic Hub offline sync / Save 500,000 UGX"
+                placeholder="e.g. Complete offline policy enforcement sync / Save 500,000 UGX"
                 className="w-full bg-gray-900 border border-gray-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
                 required
               />

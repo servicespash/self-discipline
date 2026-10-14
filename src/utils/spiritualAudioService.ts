@@ -161,11 +161,11 @@ export const ADHAN_FULL_PHRASES: AdhanPhrase[] = [
   }
 ];
 
-// Open-source Adhan audio URLs for genuine recording playback with fallback
+// Local asset prioritized first, then open-source CDNs
 const AUTHENTIC_ADHAN_STREAMS = [
+  '/audio/adhan.mp3',
   'https://raw.githubusercontent.com/Kiwifu/adhan-mp3/master/athan1.mp3',
-  'https://archive.org/download/AsrAzanFromMakkah/Asr_Azan_from_Makkah.mp3',
-  'https://upload.wikimedia.org/wikipedia/commons/8/87/Beautiful_adhan.ogg'
+  'https://archive.org/download/AsrAzanFromMakkah/Asr_Azan_from_Makkah.mp3'
 ];
 
 class SpiritualAudioEngine {
@@ -173,7 +173,6 @@ class SpiritualAudioEngine {
   private activeNodes: (AudioNode | number)[] = [];
   private isPlaying: boolean = false;
   private audioElement: HTMLAudioElement | null = null;
-  private currentPhraseIndex: number = 0;
   private phraseTimer: any = null;
   private stateChangeListeners: Set<(isPlaying: boolean, currentPhrase?: AdhanPhrase | null) => void> = new Set();
 
@@ -213,7 +212,6 @@ class SpiritualAudioEngine {
 
   public stopAll() {
     this.isPlaying = false;
-    this.currentPhraseIndex = 0;
     if (this.phraseTimer) {
       clearInterval(this.phraseTimer);
       this.phraseTimer = null;
@@ -246,14 +244,12 @@ class SpiritualAudioEngine {
     this.notify(null);
   }
 
-  // Play specified spiritual tone
   public async play(type: SpiritualAudioType, volume: number = 0.85): Promise<void> {
     this.stopAll();
     this.isPlaying = true;
 
     if (type === 'adhan_makkah' || type === 'adhan_full_session') {
-      // Attempt authentic recording stream first; fallback to high-fidelity synthesizer
-      const streamSuccess = await this.playAuthenticAdhanStream(volume, type === 'adhan_full_session');
+      const streamSuccess = await this.playAuthenticAdhanStream(volume);
       if (!streamSuccess) {
         const ctx = this.getContext();
         this.synthesizeFullAdhan(ctx, volume);
@@ -284,8 +280,7 @@ class SpiritualAudioEngine {
     }
   }
 
-  // Plays authentic recorded Adhan audio stream with progressive fallback
-  private playAuthenticAdhanStream(volume: number, isFullSession: boolean): Promise<boolean> {
+  private playAuthenticAdhanStream(volume: number): Promise<boolean> {
     return new Promise((resolve) => {
       let streamIdx = 0;
 
@@ -302,7 +297,6 @@ class SpiritualAudioEngine {
         audio.src = url;
 
         this.audioElement = audio;
-
         let resolved = false;
 
         audio.onplay = () => {
@@ -334,7 +328,6 @@ class SpiritualAudioEngine {
           });
         }
 
-        // Safety timeout: if stream takes more than 3 seconds to buffer, switch to synthesis
         const timeoutId = window.setTimeout(() => {
           if (!resolved && !audio.currentTime) {
             resolved = true;
@@ -367,33 +360,24 @@ class SpiritualAudioEngine {
     }, 500);
   }
 
-  // Synthesize Melodic Adhan Motif (Allahu Akbar, Allahu Akbar...)
   private synthesizeFullAdhan(ctx: AudioContext, masterVol: number) {
     this.notify(ADHAN_FULL_PHRASES[0]);
 
-    // Allahu Akbar motif notes
     const notes = [
-      { freq: 293.66, dur: 1.4 }, // Al-
-      { freq: 392.00, dur: 2.2 }, // la--
-      { freq: 349.23, dur: 1.2 }, // hu
-      { freq: 311.13, dur: 1.8 }, // Ak-
-      { freq: 293.66, dur: 2.8 }, // baaar
+      { freq: 293.66, dur: 1.4 },
+      { freq: 392.00, dur: 2.2 },
+      { freq: 349.23, dur: 1.2 },
+      { freq: 311.13, dur: 1.8 },
+      { freq: 293.66, dur: 2.8 },
       { freq: 0, dur: 0.6 },
-      { freq: 293.66, dur: 1.4 }, // Al-
-      { freq: 392.00, dur: 2.2 }, // la--
-      { freq: 349.23, dur: 1.2 }, // hu
-      { freq: 311.13, dur: 1.8 }, // Ak-
-      { freq: 293.66, dur: 3.5 }, // baaar
-      { freq: 0, dur: 0.8 },
-      // Ashhadu an la ilaha illa Allah
-      { freq: 349.23, dur: 1.8 },
-      { freq: 392.00, dur: 2.5 },
-      { freq: 349.23, dur: 1.6 },
-      { freq: 293.66, dur: 3.8 }
+      { freq: 293.66, dur: 1.4 },
+      { freq: 392.00, dur: 2.2 },
+      { freq: 349.23, dur: 1.2 },
+      { freq: 311.13, dur: 1.8 },
+      { freq: 293.66, dur: 3.5 }
     ];
 
     let startTime = ctx.currentTime + 0.05;
-
     const masterGain = ctx.createGain();
     masterGain.gain.setValueAtTime(masterVol * 0.9, ctx.currentTime);
     masterGain.connect(ctx.destination);
@@ -412,16 +396,15 @@ class SpiritualAudioEngine {
     this.activeNodes.push(finishTimeout);
   }
 
-  // Synthesize Opening Takbir Motif (Allahu Akbar!)
   private synthesizeTakbirMotif(ctx: AudioContext, masterVol: number) {
     this.notify(ADHAN_FULL_PHRASES[0]);
 
     const notes = [
-      { freq: 293.66, dur: 1.2 }, // Al-
-      { freq: 392.00, dur: 1.8 }, // la--
-      { freq: 349.23, dur: 1.0 }, // hu
-      { freq: 311.13, dur: 1.4 }, // Ak-
-      { freq: 293.66, dur: 2.6 }  // baaar
+      { freq: 293.66, dur: 1.2 },
+      { freq: 392.00, dur: 1.8 },
+      { freq: 349.23, dur: 1.0 },
+      { freq: 311.13, dur: 1.4 },
+      { freq: 293.66, dur: 2.6 }
     ];
 
     let startTime = ctx.currentTime + 0.05;
@@ -441,7 +424,6 @@ class SpiritualAudioEngine {
     this.activeNodes.push(finishTimeout);
   }
 
-  // Formant filter synthesis that models human vocal chanting harmonics
   private playVocalFormantNote(
     ctx: AudioContext,
     fundamental: number,
@@ -501,21 +483,17 @@ class SpiritualAudioEngine {
     this.activeNodes.push(vibrato);
   }
 
-  // Synthesize Cathedral Bronze Church Bell
   private synthesizeChurchBell(ctx: AudioContext, masterVol: number) {
     const strikeTime = ctx.currentTime + 0.05;
     const partials = [
-      { ratio: 0.5, amp: 0.8, decay: 7.0 },  // Hum
-      { ratio: 1.0, amp: 1.0, decay: 6.0 },  // Prime
-      { ratio: 1.18, amp: 0.6, decay: 5.0 }, // Tierce (minor 3rd)
-      { ratio: 1.5, amp: 0.7, decay: 4.5 },  // Quint (5th)
-      { ratio: 2.0, amp: 0.5, decay: 3.5 },  // Nominal
-      { ratio: 2.74, amp: 0.3, decay: 2.5 }, // Supernominal
-      { ratio: 3.0, amp: 0.2, decay: 1.8 }
+      { ratio: 0.5, amp: 0.8, decay: 7.0 },
+      { ratio: 1.0, amp: 1.0, decay: 6.0 },
+      { ratio: 1.18, amp: 0.6, decay: 5.0 },
+      { ratio: 1.5, amp: 0.7, decay: 4.5 },
+      { ratio: 2.0, amp: 0.5, decay: 3.5 }
     ];
 
-    const fundamental = 220; // A3 deep bronze bell
-
+    const fundamental = 220;
     const bellMaster = ctx.createGain();
     bellMaster.gain.setValueAtTime(masterVol * 0.9, strikeTime);
     bellMaster.connect(ctx.destination);
@@ -537,14 +515,6 @@ class SpiritualAudioEngine {
       this.activeNodes.push(osc);
     });
 
-    // Repeating secondary chime
-    const secondStrike = window.setTimeout(() => {
-      if (this.isPlaying) {
-        this.playSingleBellStrike(ctx, fundamental, masterVol * 0.7);
-      }
-    }, 2800);
-    this.activeNodes.push(secondStrike);
-
     const finishTimeout = window.setTimeout(() => {
       this.isPlaying = false;
       this.notify(null);
@@ -552,21 +522,6 @@ class SpiritualAudioEngine {
     this.activeNodes.push(finishTimeout);
   }
 
-  private playSingleBellStrike(ctx: AudioContext, fundamental: number, vol: number) {
-    const t = ctx.currentTime;
-    const osc = ctx.createOscillator();
-    osc.frequency.setValueAtTime(fundamental, t);
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(vol * 0.3, t);
-    gain.gain.exponentialRampToValueAtTime(0.0001, t + 4.5);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start(t);
-    osc.stop(t + 4.6);
-    this.activeNodes.push(osc);
-  }
-
-  // Synthesize 432Hz Tibetan Singing Bowl
   private synthesizeSingingBowl(ctx: AudioContext, masterVol: number) {
     const now = ctx.currentTime + 0.05;
     const freqs = [432, 864, 1296, 2160];
@@ -601,7 +556,6 @@ class SpiritualAudioEngine {
     this.activeNodes.push(finishTimeout);
   }
 
-  // Synthesize Sacred Harp Chords
   private synthesizeSacredHarp(ctx: AudioContext, masterVol: number) {
     const chord = [261.63, 329.63, 392.00, 523.25, 659.25];
     let time = ctx.currentTime + 0.05;
@@ -637,7 +591,6 @@ class SpiritualAudioEngine {
     this.activeNodes.push(finishTimeout);
   }
 
-  // Synthesize Digital Discipline Alarm
   private synthesizeDigitalAlarm(ctx: AudioContext, masterVol: number) {
     let time = ctx.currentTime + 0.05;
     const masterGain = ctx.createGain();

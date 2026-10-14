@@ -4,6 +4,8 @@ import { Sparkles } from 'lucide-react';
 interface ProfileTabProps {
   moniker: string;
   setMoniker: (m: string) => void;
+  role: string;
+  setRole: (r: string) => void;
   workTitle: string;
   setWorkTitle: (w: string) => void;
   session: any;
@@ -13,7 +15,7 @@ interface ProfileTabProps {
 }
 
 export const ProfileTab: React.FC<ProfileTabProps> = ({ 
-  moniker, setMoniker, workTitle, setWorkTitle, session, handleSaveProfile, setActiveTab, saveToast 
+  moniker, setMoniker, role, setRole, workTitle, setWorkTitle, session, handleSaveProfile, setActiveTab, saveToast 
 }) => (
   <form onSubmit={handleSaveProfile} className="space-y-4">
     {saveToast && (
@@ -33,6 +35,21 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
     </div>
 
     <div className="space-y-1.5">
+      <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Institutional Role</label>
+      <select 
+        value={role} 
+        onChange={(e) => setRole(e.target.value)}
+        className="w-full bg-gray-950 border border-gray-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono cursor-pointer"
+      >
+        <option value="student">Student / Ward (Affected by Governance & Lockdown)</option>
+        <option value="guardian">Guardian / Parent (Sets Rules & Wards)</option>
+        <option value="trainer">Trainer / Mentor (Assigns Tasks & Discipline)</option>
+        <option value="administrator">Administrator (Full Institutional Sovereign Access)</option>
+        <option value="reseller">Reseller Pro (License & Seat Distributor)</option>
+      </select>
+    </div>
+
+    <div className="space-y-1.5">
       <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Professional Role / Specialty</label>
       <input 
         type="text" 
@@ -46,7 +63,7 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
     <div className="grid grid-cols-2 gap-3 pt-2">
       <div className="p-3 bg-gray-950 rounded-xl border border-gray-800">
         <div className="text-[9px] text-gray-500 uppercase font-bold">Role Authority</div>
-        <div className="text-xs font-black text-emerald-400 mt-1">{session?.role || 'User'}</div>
+        <div className="text-xs font-black text-emerald-400 mt-1 uppercase">{role || session?.role || 'User'}</div>
       </div>
       <div className="p-3 bg-gray-950 rounded-xl border border-gray-800">
         <div className="text-[9px] text-gray-500 uppercase font-bold">System UID</div>

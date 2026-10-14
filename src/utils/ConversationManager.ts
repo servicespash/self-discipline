@@ -267,7 +267,7 @@ export const ConversationManager = {
     }
     return `[Architect Trajectory & User Identity]:
 - Architect: Isabirye Latif (Solo Architect).
-- Core Discipline: Universal Cymatic Hub execution, strict phone/app lockdown during focus.
+- Core Discipline: Universal Cymatic Discipline OS execution, strict phone/app lockdown during focus.
 - Spiritual Anchors: 5 daily prayers, 15m post-prayer centering, workspace order.
 - Trajectory: High-performance software engineering and uninterrupted execution.`;
   },
@@ -415,7 +415,7 @@ ${keyPoints || longSummary.slice(0, 400)}`;
 - Ongoing Commitments:
   * Spiritual discipline: ${hasPrayer ? 'Active prayer checkpoints monitored' : 'Standard 5 daily prayers'}.
   * Focus enforcement: ${hasLockdown ? 'Lockdown shield protocol engaged' : 'Deep work discipline'}.
-  * Technical target: ${hasCode ? 'Universal Cymatic Hub code and execution' : 'High-impact task completion'}.
+  * Technical target: ${hasCode ? 'Universal Cymatic Discipline OS code and execution' : 'High-impact task completion'}.
 - System State: ${userContext?.lockdownActive ? 'Shield Lock Active' : 'Monitor Standby'}.`;
   },
 

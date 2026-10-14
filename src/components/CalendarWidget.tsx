@@ -23,13 +23,13 @@ export default function CalendarWidget({ accessToken }: { accessToken: string | 
       return saved ? JSON.parse(saved) : [
         {
           id: 'local_1',
-          summary: 'Cymatic Resonance Live Call Execution',
+          summary: 'Discipline Execution Review',
           startTime: new Date(Date.now() + 3600000 * 2).toISOString(),
           source: 'local'
         },
         {
           id: 'local_2',
-          summary: 'Cymatic Hub PBL Module Sync',
+          summary: 'Governance Compliance Audit',
           startTime: new Date(Date.now() + 3600000 * 24).toISOString(),
           source: 'local'
         }

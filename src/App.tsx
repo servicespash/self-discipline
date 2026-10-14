@@ -181,7 +181,7 @@ const AppContent: React.FC = () => {
       {/* Global AI Floating Execution Hub */}
       {isHubVisible ? (
         <RamaFloatingHub 
-          context="Cymatic Hub & Resonance Universal Shell" 
+          context="Cymatic Discipline OS Universal Shell" 
           session={session}
           onClose={() => setIsHubVisible(false)} 
         />

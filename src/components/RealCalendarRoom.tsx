@@ -266,7 +266,7 @@ export default function RealCalendarRoom({ accessToken }: { accessToken: string 
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
   return (
-    <div className="space-y-8 max-w-6xl mx-auto pb-12">
+    <div className="space-y-8 max-w-7xl mx-auto pb-12">
       {/* 1. Real Calendar Card */}
       <div className="bg-gray-900/90 rounded-3xl border border-gray-800 shadow-2xl p-6 sm:p-8 backdrop-blur-xl space-y-6">
         {/* Calendar Header with Year, Month, Jump to Today and Navigation */}

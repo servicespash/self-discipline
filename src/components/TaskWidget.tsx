@@ -1,3 +1,9 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ * TaskWidget - Task Management & Calendar Integration Matrix with Supabase Persistence
+ */
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { CheckCircle2, CalendarDays, ArrowRight } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -5,22 +11,22 @@ import { DisciplineBridge } from '../DisciplineBridge';
 import { TaskFilterBar } from './tasks/TaskFilterBar';
 import { AddTaskForm } from './tasks/AddTaskForm';
 import { TaskList } from './tasks/TaskList';
-
-
 import { supabase } from '../utils/supabase';
 import { useSession } from '../context/SessionContext';
 
 export interface TaskItem {
   id: string;
-  user_uid: string;
+  user_uid?: string;
   title: string;
+  description?: string;
   date_str: string;
   start_time: string;
   end_time: string;
-  status: 'needsAction' | 'inProgress' | 'completed';
+  status: 'needsAction' | 'inProgress' | 'completed' | 'pending';
   category: 'architecture' | 'engineering' | 'spiritual' | 'fitness' | 'deep_work';
   priority: 'critical' | 'high' | 'medium' | 'low';
   linked_rule?: string | null;
+  source?: string;
 }
 
 const MONTH_NAMES = [
@@ -55,13 +61,27 @@ export default function TaskWidget({ accessToken }: { accessToken?: string | nul
       
       if (error) {
         console.error('Error fetching tasks:', error);
-      } else {
-        setTasks(data || []);
+      } else if (data) {
+        const mapped: TaskItem[] = data.map((t: any) => ({
+          id: t.id,
+          user_uid: t.user_uid,
+          title: t.title,
+          description: t.description,
+          date_str: t.date_str || t.dueDate || todayStr,
+          start_time: t.start_time || '09:00',
+          end_time: t.end_time || '10:00',
+          status: t.status === 'completed' ? 'completed' : 'needsAction',
+          category: t.category || 'deep_work',
+          priority: t.priority || 'medium',
+          linked_rule: t.linked_rule,
+          source: t.source || 'supabase'
+        }));
+        setTasks(mapped);
       }
     };
 
     fetchTasks();
-  }, [uid]);
+  }, [uid, todayStr]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -103,61 +123,85 @@ export default function TaskWidget({ accessToken }: { accessToken?: string | nul
   const [newTaskPriority, setNewTaskPriority] = useState<TaskItem['priority']>('high');
   const [newTaskRule, setNewTaskRule] = useState('');
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(LOCAL_TASKS_KEY, JSON.stringify(tasks));
-      const calendarSyncItems = tasks.map((t) => ({
-        id: `cal_task_${t.id}`,
-        title: `[Task] ${t.title}`,
-        summary: `[Task] ${t.title}`,
-        dateStr: t.dateStr,
-        startTime: t.startTime,
-        endTime: t.endTime,
-        category: t.category,
-        source: t.source,
-        linkedRule: t.linkedRule,
-        autoLockdown: !!t.linkedRule
-      }));
-
-      const existingCalStr = localStorage.getItem(CALENDAR_EVENTS_KEY);
-      const existingCal = existingCalStr ? JSON.parse(existingCalStr) : [];
-      const nonTaskEvents = existingCal.filter((e: any) => !e.id?.startsWith('cal_task_'));
-      localStorage.setItem(CALENDAR_EVENTS_KEY, JSON.stringify([...nonTaskEvents, ...calendarSyncItems]));
-    } catch (e) {
-      console.error('Task persistence error:', e);
-    }
-  }, [tasks]);
-
-  const handleAddTask = (e: React.FormEvent) => {
+  const handleAddTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTaskTitle.trim()) return;
 
-    const newTask: TaskItem = {
-      id: `task_${Date.now()}`,
+    const newTaskRecord = {
+      user_uid: uid || 'local-user',
       title: newTaskTitle.trim(),
-      dateStr: newTaskDate,
-      startTime: newTaskStart,
-      endTime: newTaskEnd,
+      date_str: newTaskDate,
+      start_time: newTaskStart,
+      end_time: newTaskEnd,
       status: 'needsAction',
       category: newTaskCategory,
       priority: newTaskPriority,
-      source: 'local',
-      linkedRule: newTaskRule || undefined
+      linked_rule: newTaskRule || null,
+      source: 'supabase'
     };
 
-    setTasks([newTask, ...tasks]);
-    setNewTaskTitle('');
+    if (uid) {
+      const { data, error } = await supabase
+        .from('tasks')
+        .insert([newTaskRecord])
+        .select();
 
+      if (error) {
+        console.error('Error inserting task into Supabase:', error);
+      } else if (data && data[0]) {
+        const t = data[0];
+        const formatted: TaskItem = {
+          id: t.id,
+          user_uid: t.user_uid,
+          title: t.title,
+          date_str: t.date_str || newTaskDate,
+          start_time: t.start_time || newTaskStart,
+          end_time: t.end_time || newTaskEnd,
+          status: t.status,
+          category: t.category || newTaskCategory,
+          priority: t.priority || newTaskPriority,
+          linked_rule: t.linked_rule,
+          source: 'supabase'
+        };
+        setTasks([formatted, ...tasks]);
+      }
+    } else {
+      const localItem: TaskItem = {
+        id: `task_${Date.now()}`,
+        title: newTaskTitle.trim(),
+        date_str: newTaskDate,
+        start_time: newTaskStart,
+        end_time: newTaskEnd,
+        status: 'needsAction',
+        category: newTaskCategory,
+        priority: newTaskPriority,
+        linked_rule: newTaskRule || null,
+        source: 'local'
+      };
+      setTasks([localItem, ...tasks]);
+    }
+
+    setNewTaskTitle('');
     if (newTaskRule && newTaskDate === todayStr) {
       DisciplineBridge.initiateLockdown(30, 'com.whatsapp,com.instagram.android');
     }
   };
 
-  const toggleTaskStatus = (id: string) => {
+  const toggleTaskStatus = async (id: string) => {
+    const target = tasks.find(t => t.id === id);
+    if (!target) return;
+    const nextStatus = target.status === 'completed' ? 'needsAction' : 'completed';
+
+    if (uid && !id.startsWith('task_')) {
+      await supabase
+        .from('tasks')
+        .update({ status: nextStatus })
+        .eq('id', id);
+    }
+
     setTasks(
       tasks.map((t) => {
         if (t.id === id) {
-          const nextStatus = t.status === 'completed' ? 'needsAction' : 'completed';
           return { ...t, status: nextStatus };
         }
         return t;
@@ -165,22 +209,28 @@ export default function TaskWidget({ accessToken }: { accessToken?: string | nul
     );
   };
 
-  const deleteTask = (id: string) => {
+  const deleteTask = async (id: string) => {
+    if (uid && !id.startsWith('task_')) {
+      await supabase
+        .from('tasks')
+        .delete()
+        .eq('id', id);
+    }
     setTasks(tasks.filter((t) => t.id !== id));
   };
 
   const filteredTasks = useMemo(() => {
     return tasks.filter((t) => {
-      if (filterMode === 'today' && t.dateStr !== todayStr) return false;
+      if (filterMode === 'today' && t.date_str !== todayStr) return false;
       if (filterMode === 'tomorrow') {
         const tomorrow = new Date(today);
         tomorrow.setDate(tomorrow.getDate() + 1);
         const tomorrowStr = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
-        if (t.dateStr !== tomorrowStr) return false;
+        if (t.date_str !== tomorrowStr) return false;
       }
-      if (filterMode === 'custom' && t.dateStr !== selectedDate) return false;
+      if (filterMode === 'custom' && t.date_str !== selectedDate) return false;
       if (filterMode === 'month') {
-        const parts = t.dateStr.split('-');
+        const parts = (t.date_str || '').split('-');
         if (parts.length === 3) {
           const taskYear = parseInt(parts[0], 10);
           const taskMonth = parseInt(parts[1], 10) - 1;
@@ -189,7 +239,7 @@ export default function TaskWidget({ accessToken }: { accessToken?: string | nul
       }
 
       if (timeRangeFilter !== 'all') {
-        const hour = parseInt(t.startTime.split(':')[0], 10);
+        const hour = parseInt((t.start_time || '09:00').split(':')[0], 10);
         if (timeRangeFilter === 'morning' && (hour < 6 || hour >= 12)) return false;
         if (timeRangeFilter === 'afternoon' && (hour < 12 || hour >= 17)) return false;
         if (timeRangeFilter === 'evening' && (hour < 17 || hour >= 24)) return false;
@@ -199,46 +249,31 @@ export default function TaskWidget({ accessToken }: { accessToken?: string | nul
     });
   }, [tasks, filterMode, selectedDate, selectedMonth, selectedYear, timeRangeFilter, todayStr, today]);
 
-  const completedCount = filteredTasks.filter((t) => t.status === 'completed').length;
+  const completedCount = filteredTasks.filter(t => t.status === 'completed').length;
   const progressPercent = filteredTasks.length > 0 ? Math.round((completedCount / filteredTasks.length) * 100) : 0;
 
   return (
-    <div className="bg-gray-900 p-6 sm:p-8 rounded-3xl border border-gray-800 shadow-2xl space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-800 pb-5">
-        <div>
-          <h3 className="text-sm font-black text-white uppercase tracking-widest flex items-center gap-2">
-            <CheckCircle2 size={18} className="text-emerald-400" /> Task Manager &amp; Calendar Matrix
-          </h3>
-          <p className="text-[10px] text-gray-500 uppercase font-bold mt-1">
-            Scheduled execution linked bi-directionally with the Real Calendar Grid
+    <div className="space-y-6 w-full max-w-7xl mx-auto pb-12 text-gray-100 min-w-0">
+      <div className="p-6 bg-gradient-to-r from-gray-900 via-gray-900 to-emerald-950/40 border border-gray-800 rounded-3xl shadow-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div className="space-y-1">
+          <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full text-emerald-400 text-[10px] font-black uppercase tracking-wider">
+            <CalendarDays size={12} /> Calendar & Task Matrix
+          </div>
+          <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight uppercase">
+            Execution Tasks & Rules
+          </h2>
+          <p className="text-xs text-gray-400 font-mono">
+            Synchronized with Supabase persistence and strict discipline enforcement rules.
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => navigate(`/calendar?date=${selectedDate}`)}
-            className="px-3.5 py-2 bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-400 border border-emerald-500/20 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5"
-          >
-            <CalendarDays size={14} /> Open in Calendar <ArrowRight size={12} />
-          </button>
-        </div>
+        <button
+          onClick={() => navigate('/dashboard')}
+          className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-gray-950 font-black rounded-xl text-xs uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer"
+        >
+          <span>Dashboard Overview</span> <ArrowRight size={14} />
+        </button>
       </div>
-
-      <TaskFilterBar
-        filterMode={filterMode}
-        setFilterMode={setFilterMode}
-        selectedDate={selectedDate}
-        setSelectedDate={setSelectedDate}
-        selectedMonth={selectedMonth}
-        setSelectedMonth={setSelectedMonth}
-        selectedYear={selectedYear}
-        setSelectedYear={setSelectedYear}
-        timeRangeFilter={timeRangeFilter}
-        setTimeRangeFilter={setTimeRangeFilter}
-        MONTH_NAMES={MONTH_NAMES}
-        tasksCount={filteredTasks.length}
-        progressPercent={progressPercent}
-      />
 
       <AddTaskForm
         title={newTaskTitle}
@@ -258,7 +293,27 @@ export default function TaskWidget({ accessToken }: { accessToken?: string | nul
         onSubmit={handleAddTask}
       />
 
-      <TaskList tasks={filteredTasks} onToggle={toggleTaskStatus} onDelete={deleteTask} />
+      <TaskFilterBar
+        filterMode={filterMode}
+        setFilterMode={setFilterMode}
+        selectedDate={selectedDate}
+        setSelectedDate={setSelectedDate}
+        selectedMonth={selectedMonth}
+        setSelectedMonth={setSelectedMonth}
+        selectedYear={selectedYear}
+        setSelectedYear={setSelectedYear}
+        timeRangeFilter={timeRangeFilter}
+        setTimeRangeFilter={setTimeRangeFilter}
+        MONTH_NAMES={MONTH_NAMES}
+        tasksCount={filteredTasks.length}
+        progressPercent={progressPercent}
+      />
+
+      <TaskList
+        tasks={filteredTasks}
+        onToggle={toggleTaskStatus}
+        onDelete={deleteTask}
+      />
     </div>
   );
 }

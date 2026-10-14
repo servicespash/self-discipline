@@ -125,7 +125,7 @@ export default function ResellerManager() {
   }, [activeLicense, searchLeadQuery]);
 
   return (
-    <div className="space-y-6 pb-12 w-full max-w-6xl mx-auto min-w-0">
+    <div className="space-y-6 pb-12 w-full max-w-7xl mx-auto min-w-0">
       {/* Toast Feedback */}
       {toastMessage && (
         <div className="fixed top-16 right-6 z-50 px-4 py-3 bg-emerald-950/95 border border-emerald-500/50 rounded-2xl shadow-2xl text-emerald-300 text-xs font-mono font-bold flex items-center gap-2 animate-in fade-in">

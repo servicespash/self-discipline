@@ -136,7 +136,7 @@ export default function CalendarManager({ accessToken }: { accessToken: string |
       },
       {
         id: 'evt_2',
-        summary: 'Cymatic Resonance Core Sync',
+        summary: 'Cymatic Discipline Core Sync',
         dateStr: todayStr,
         startTime: '14:30',
         endTime: '15:30',

@@ -1,5 +1,5 @@
 {
-  "name": "react-example",
+  "name": "cymatic-discipline-os",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -18,10 +18,10 @@
     "@supabase/supabase-js": "^2.117.3",
     "@tailwindcss/vite": "^4.3.3",
     "@vitejs/plugin-react": "^4.3.4",
+    "core-js": "^3.50.0",
     "dotenv": "^17.2.3",
     "drizzle-orm": "^0.45.4",
     "express": "^4.21.2",
-    "firebase": "^13.0.0",
     "jspdf": "^4.2.1",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",

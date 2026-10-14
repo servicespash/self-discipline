@@ -13,7 +13,8 @@ import {
   Smartphone, 
   ShieldAlert, 
   DollarSign, 
-  ShieldCheck 
+  ShieldCheck,
+  Scale
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -72,7 +73,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileMenuOpen, setIsMobileM
 
         <nav className="space-y-1">
           {[
-            { to: '/dashboard', icon: Home, label: 'Core Hub' },
+            { to: '/dashboard', icon: Home, label: 'Core Engine' },
             { to: '/tasks', icon: CheckSquare, label: 'Tasks' },
             { to: '/calendar', icon: CalendarDays, label: 'Calendar Grid' },
             { to: '/wallet', icon: Wallet, label: 'Capital Tracker' },
@@ -84,7 +85,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileMenuOpen, setIsMobileM
             { to: '/focus', icon: ShieldAlert, label: 'Focus & VPN Firewall' },
             { to: '/reseller', icon: DollarSign, label: 'Referrals & Team Seats' },
             { to: '/wellbeing', icon: HeartPulse, label: 'Wellbeing Manager' },
-            { to: '/trust', icon: ShieldCheck, label: 'Trust & Legal Hub' },
+            { to: '/governance', icon: Scale, label: 'Governance & Contracts' },
+            { to: '/trust', icon: ShieldCheck, label: 'Trust & Legal' },
           ].map(item => (
             <NavItem key={item.to} to={item.to} icon={item.icon} label={item.label} onClick={() => setIsMobileMenuOpen(false)} />
           ))}

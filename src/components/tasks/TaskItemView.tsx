@@ -43,11 +43,11 @@ export const TaskItemView: React.FC<TaskItemProps> = ({ task, onToggle, onDelete
 
           <div className="flex flex-wrap items-center gap-2 text-[10px] font-mono text-gray-500">
             <span className="flex items-center gap-1">
-              <Calendar size={10} /> {task.dateStr}
+              <Calendar size={10} /> {task.date_str}
             </span>
             <span>•</span>
             <span className="flex items-center gap-1">
-              <Clock size={10} /> {task.startTime} - {task.endTime}
+              <Clock size={10} /> {task.start_time} - {task.end_time}
             </span>
             <span>•</span>
             <span className="text-gray-400 uppercase font-bold text-[9px]">{task.category}</span>
@@ -56,7 +56,7 @@ export const TaskItemView: React.FC<TaskItemProps> = ({ task, onToggle, onDelete
       </div>
 
       <div className="flex items-center gap-2.5 self-end sm:self-auto">
-        {task.linkedRule && (
+        {task.linked_rule && (
           <span className="text-[9px] font-mono uppercase px-2 py-0.5 rounded bg-purple-950/60 text-purple-400 border border-purple-500/20 flex items-center gap-1">
             <ShieldCheck size={10} /> Lockdown
           </span>

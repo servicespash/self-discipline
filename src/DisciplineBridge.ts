@@ -1,13 +1,15 @@
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
- * Event-Driven Production DisciplineBridge - Native OS Intent Interceptor
+ * Event-Driven Production DisciplineBridge - Native OS Intent Interceptor & Strict Interminable Lockdown Engine
  */
+
+import { supabase } from './utils/supabase';
 
 export interface DeviceAppRecord {
   id: string; // Android package name e.g. com.instagram.android
   name: string; // App label e.g. Instagram
-  category: 'social' | 'entertainment' | 'gaming' | 'messaging' | 'productivity' | 'system';
+  category: 'Productivity' | 'Social' | 'Entertainment' | 'Utility' | 'Finance' | 'Restricted' | 'system';
   dopamineLevel: 'extreme' | 'high' | 'moderate' | 'low' | 'neutral';
   isSystem?: boolean;
   defaultRestricted?: boolean;
@@ -55,7 +57,7 @@ class DisciplineBridgeEngine {
     this.loadPersistedState();
     if (typeof window !== 'undefined' && window.BroadcastChannel) {
       this.broadcastChannel = new BroadcastChannel('sdc_discipline_event_bus');
-      this.broadcastChannel.onmessage = (event) => {
+      this.broadcastChannel.onmessage = (event: MessageEvent) => {
         if (event.data && typeof event.data === 'object') {
           this.lockdownState = event.data as SystemLockdownPayload;
           this.emit('lockdownChange', this.lockdownState);
@@ -69,11 +71,11 @@ class DisciplineBridgeEngine {
     return () => this.off('lockdownChange', listener);
   }
 
-  public on(event: 'lockdownChange', listener: (payload: SystemLockdownPayload) => void) {
+  public on(event: 'lockdownChange', listener: (payload: SystemLockdownPayload) => void): void {
     this.events[event].push(listener);
   }
 
-  private loadPersistedState() {
+  private loadPersistedState(): void {
     try {
       const saved = localStorage.getItem('sdc_discipline_engine_v3');
       if (saved) {
@@ -90,16 +92,15 @@ class DisciplineBridgeEngine {
     }
   }
 
-  public off(event: 'lockdownChange', listener: (payload: SystemLockdownPayload) => void) {
+  public off(event: 'lockdownChange', listener: (payload: SystemLockdownPayload) => void): void {
     this.events[event] = this.events[event].filter(l => l !== listener);
   }
 
-  private emit(event: 'lockdownChange', payload: SystemLockdownPayload) {
+  private emit(event: 'lockdownChange', payload: SystemLockdownPayload): void {
     this.events[event].forEach(listener => listener(payload));
   }
 
-  // ... (loadPersistedState, saveState, initiateLockdown, etc. same as before, but call emit instead of notifyListeners)
-  private saveState() {
+  private saveState(): void {
     try {
       localStorage.setItem('sdc_discipline_engine_v3', JSON.stringify(this.lockdownState));
       if (this.broadcastChannel) {
@@ -111,11 +112,8 @@ class DisciplineBridgeEngine {
       console.error('[DisciplineBridge] State save error:', e);
     }
   }
-  
-  // ... (rest of methods)
 
-
-  private async dispatchNativeInterception(active: boolean) {
+  private async dispatchNativeInterception(active: boolean): Promise<void> {
     if (typeof window !== 'undefined' && window.Capacitor?.isPluginAvailable('DisciplineNative')) {
       try {
         const plugin = window.Capacitor.Plugins.DisciplineNative;
@@ -136,10 +134,15 @@ class DisciplineBridgeEngine {
     return SOCIAL_MEDIA_PACKAGES.includes(packageId);
   }
 
+  public isValidPackageName(packageName: string): boolean {
+    const pkgRegex = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/i;
+    return pkgRegex.test(packageName);
+  }
+
   public async terminateLockdown(): Promise<void> {
     if (this.lockdownState.active && Date.now() < this.lockdownState.endTime) {
       console.warn('Security Violation: Attempted early termination of lockdown - rejection enforced');
-      // Keep native suppression and intent interception active
+      // Enforce strict interminable lockdown: keep native suppression and intent interception active
       await this.dispatchNativeInterception(true);
       return;
     }
@@ -151,16 +154,71 @@ class DisciplineBridgeEngine {
   public async initiateLockdown(
     durationMinutes: number, 
     packagesCsv?: string,
-    allowedSocialPkg?: string | null
+    allowedSocialPkg?: string | null,
+    contractId?: string | null
   ): Promise<SystemLockdownPayload> {
     const now = Date.now();
+
+    if (contractId) {
+      try {
+        const { data: contract, error } = await supabase
+          .from('governance_contracts')
+          .select('*')
+          .eq('id', contractId)
+          .single();
+
+        if (error || !contract) {
+          console.warn('[DisciplineBridge] Security Violation: Attempted lockdown with invalid or missing contract ID:', contractId);
+          throw new Error('Lockdown rejected: Associated governance contract not found.');
+        }
+
+        if (contract.status !== 'active') {
+          console.warn('[DisciplineBridge] Security Violation: Attempted lockdown with inactive contract status:', contract.status);
+          throw new Error(`Lockdown rejected: Governance contract is not active (status: ${contract.status}).`);
+        }
+
+        // Validate time windows if present
+        if (Array.isArray(contract.agreed_time_windows) && contract.agreed_time_windows.length > 0) {
+          const currentDate = new Date(now);
+          const currentDay = currentDate.toLocaleString('en-US', { weekday: 'long' }).toLowerCase();
+          const currentTimeStr = currentDate.toTimeString().slice(0, 5); // "HH:MM"
+
+          const validWindow = contract.agreed_time_windows.some((w: any) => {
+            const wDay = (w.day || '').toLowerCase();
+            const matchesDay = !wDay || wDay === 'daily' || wDay === currentDay;
+            const matchesTime = (!w.startTime || !w.endTime) || (currentTimeStr >= w.startTime && currentTimeStr <= w.endTime);
+            return matchesDay && matchesTime;
+          });
+
+          if (!validWindow) {
+            console.warn('[DisciplineBridge] Security Violation: Lockdown attempted outside agreed contract time windows.');
+            throw new Error('Lockdown rejected: Attempted outside agreed governance contract time windows.');
+          }
+        }
+
+        // Verify requested packages against agreed packages
+        if (packagesCsv && Array.isArray(contract.agreed_packages)) {
+          const requestedPkgs = packagesCsv.split(',').map(s => s.trim()).filter(Boolean);
+          const agreedPkgs = contract.agreed_packages as string[];
+          const unagreed = requestedPkgs.filter(p => !agreedPkgs.includes(p));
+
+          if (unagreed.length > 0) {
+            console.warn('[DisciplineBridge] Security Violation: Lockdown requested unagreed packages:', unagreed);
+            throw new Error(`Lockdown rejected: Requested restricted packages [${unagreed.join(', ')}] are not authorized in the active governance contract.`);
+          }
+        }
+      } catch (err: any) {
+        console.error('[DisciplineBridge] Governance validation error:', err);
+        throw err;
+      }
+    }
+
     const endTime = now + durationMinutes * 60 * 1000;
-    const pkgRegex = /^[a-zA-Z0-9_]+(\.[a-zA-Z0-9_]+)+$/;
+    const pkgRegex = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/i;
     let restricted = packagesCsv 
       ? packagesCsv.split(',').map(s => s.trim()).filter(p => pkgRegex.test(p))
       : [];
 
-    // If a specific social app is allowed, ensure it's not in the restricted list
     if (allowedSocialPkg && pkgRegex.test(allowedSocialPkg)) {
       restricted = restricted.filter(p => p !== allowedSocialPkg);
     }
@@ -176,7 +234,6 @@ class DisciplineBridgeEngine {
 
     this.saveState();
     
-    // Activate VPN and system lockdown
     if (typeof window !== 'undefined' && window.Capacitor?.isPluginAvailable('DisciplineNative')) {
       const plugin = window.Capacitor.Plugins.DisciplineNative;
       await plugin.startVpnTunnel();
@@ -197,18 +254,26 @@ class DisciplineBridgeEngine {
   }
 
   public categorizePackageName(pkgName: string): {
-    category: 'social' | 'entertainment' | 'gaming' | 'messaging' | 'productivity' | 'system';
+    category: 'Productivity' | 'Social' | 'Entertainment' | 'Utility' | 'Finance' | 'Restricted' | 'system';
     dopamineLevel: 'extreme' | 'high' | 'moderate' | 'low' | 'neutral';
   } {
     const lower = pkgName.toLowerCase();
     if (
+      lower.includes('bank') ||
+      lower.includes('finance') ||
+      lower.includes('wallet') ||
+      lower.includes('pay') ||
+      lower.includes('money')
+    ) {
+      return { category: 'Finance', dopamineLevel: 'low' };
+    }
+    if (
       lower.includes('whatsapp') ||
       lower.includes('telegram') ||
       lower.includes('signal') ||
-      lower.includes('messaging') ||
       lower.includes('messenger')
     ) {
-      return { category: 'messaging', dopamineLevel: 'moderate' };
+      return { category: 'Utility', dopamineLevel: 'moderate' };
     }
     if (
       lower.includes('instagram') ||
@@ -220,7 +285,7 @@ class DisciplineBridgeEngine {
       lower.includes('reddit') ||
       lower.includes('pinterest')
     ) {
-      return { category: 'social', dopamineLevel: 'extreme' };
+      return { category: 'Social', dopamineLevel: 'extreme' };
     }
     if (
       lower.includes('youtube') ||
@@ -228,39 +293,45 @@ class DisciplineBridgeEngine {
       lower.includes('spotify') ||
       lower.includes('twitch') ||
       lower.includes('hulu') ||
-      lower.includes('disney')
-    ) {
-      return { category: 'entertainment', dopamineLevel: 'high' };
-    }
-    if (
+      lower.includes('disney') ||
       lower.includes('game') ||
-      lower.includes('supercell') ||
       lower.includes('roblox') ||
-      lower.includes('minecraft') ||
-      lower.includes('epicgames')
+      lower.includes('minecraft')
     ) {
-      return { category: 'gaming', dopamineLevel: 'extreme' };
+      return { category: 'Entertainment', dopamineLevel: 'high' };
     }
     if (
-      lower.includes('android.settings') ||
+      lower.includes('settings') ||
       lower.includes('dialer') ||
       lower.includes('system') ||
-      lower.includes('contacts')
+      lower.includes('contacts') ||
+      lower.includes('camera')
     ) {
       return { category: 'system', dopamineLevel: 'neutral' };
     }
-    return { category: 'productivity', dopamineLevel: 'low' };
+    if (
+      lower.includes('calc') ||
+      lower.includes('notes') ||
+      lower.includes('docs') ||
+      lower.includes('code') ||
+      lower.includes('termux')
+    ) {
+      return { category: 'Productivity', dopamineLevel: 'low' };
+    }
+    return { category: 'Restricted', dopamineLevel: 'moderate' };
   }
 
   public async fetchInstalledApps(): Promise<DeviceAppRecord[]> {
     if (typeof window !== 'undefined' && window.Capacitor?.isPluginAvailable('DisciplineNative')) {
       try {
         const result = await window.Capacitor.Plugins.DisciplineNative.fetchInstalledApps();
-        const parsed = JSON.parse(result).map((app: any) => {
-          const scoring = this.categorizePackageName(app.packageName || '');
+        const rawApps = JSON.parse(result) as Array<{ packageName?: string; name?: string }>;
+        const parsed = rawApps.map((app) => {
+          const pkgName = app.packageName || '';
+          const scoring = this.categorizePackageName(pkgName);
           return {
-            id: app.packageName,
-            name: app.name,
+            id: pkgName,
+            name: app.name || pkgName,
             category: scoring.category,
             dopamineLevel: scoring.dopamineLevel
           };
@@ -273,11 +344,10 @@ class DisciplineBridgeEngine {
       }
     }
 
-    // Load persisted real user configured package registry
     try {
       const saved = localStorage.getItem('sdc_user_configured_packages_v1') || localStorage.getItem('sdc_user_configured_apps_v1');
       if (saved) {
-        return JSON.parse(saved);
+        return JSON.parse(saved) as DeviceAppRecord[];
       }
     } catch (e) {
       console.warn('[DisciplineBridge] Configured packages load fallback:', e);

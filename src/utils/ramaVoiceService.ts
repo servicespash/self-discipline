@@ -1,405 +1,232 @@
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
- * Rama Voice Listening & Continuous Wake Word Engine
- * Explicitly supports continuous background listening for 'Hi Rama', 'Hello Rama', 'Open display',
- * and seamlessly activates UI hubs without requiring manual triggers.
- * Provides audio-responsive levels and waveform metrics for UI visualization.
+ * Decoupled Rama AI Voice & Wake-Word Service Engine
+ * Debounces speech recognition lifecycle to prevent rapid mic flickering.
  */
 
 export interface RamaVoiceState {
   isListening: boolean;
-  isSupported: boolean;
-  wakeWordDetected: boolean;
-  lastWakeWord: string | null;
-  transcript: string;
   isSpeaking: boolean;
-  continuousMode: boolean;
-  audioLevel: number; // 0 to 100 for waveform visualization
+  transcript: string;
+  wakeWordDetected: boolean;
+  micSensitivity: number; // 0.0 to 1.0 VAD threshold
 }
 
 class RamaVoiceEngine {
   private recognition: any = null;
   private isListening: boolean = false;
-  private isSupported: boolean = false;
-  private continuousMode: boolean = true;
-  private autoRestart: boolean = true;
-  private transcript: string = '';
   private isSpeaking: boolean = false;
-  private audioLevel: number = 0;
-  private levelInterval: any = null;
-  private lastWakeWord: string | null = null;
-  private lastWakeWordTime: number = 0;
+  private isRestarting: boolean = false;
   private restartTimer: any = null;
-  private listeners: Set<(state: RamaVoiceState) => void> = new Set();
-  private wakeWordCallbacks: Set<(wakeWord: string) => void> = new Set();
-  private commandCallbacks: Set<(command: string) => void> = new Set();
-  private isProcessingCommand: boolean = false;
+  private transcript: string = '';
+  private stateListeners: Set<(state: RamaVoiceState) => void> = new Set();
+  private commandListeners: Set<(command: string) => void> = new Set();
+  private wakeWordListeners: Set<(wakeWord: string) => void> = new Set();
+
+  private wakeWords: string[] = ['hey rama', 'hi rama', 'hey discipline', 'rama'];
 
   constructor() {
-    this.initRecognition();
+    this.initSpeechRecognition();
   }
 
-  private initRecognition() {
+  private initSpeechRecognition() {
     if (typeof window === 'undefined') return;
 
-    const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRec) {
-      this.isSupported = false;
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      console.warn('[RamaVoice] Speech Recognition API not supported in browser environment.');
       return;
     }
 
-    this.isSupported = true;
-    try {
-      const rec = new SpeechRec();
-      rec.continuous = true;
-      rec.interimResults = true;
-      rec.maxAlternatives = 1;
-      rec.lang = 'en-US';
+    this.recognition = new SpeechRecognition();
+    this.recognition.continuous = true;
+    this.recognition.interimResults = true;
+    this.recognition.lang = 'en-US';
 
-      rec.onstart = () => {
-        this.isListening = true;
-        this.startLevelSimulation('listening');
-        this.notify();
-      };
+    this.recognition.onstart = () => {
+      this.isListening = true;
+      this.isRestarting = false;
+      this.notifyState();
+    };
 
-      rec.onresult = (event: any) => {
-        let interimText = '';
-        let finalText = '';
+    this.recognition.onresult = (event: any) => {
+      let interimTranscript = '';
+      let finalTranscript = '';
 
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const res = event.results[i];
-          const text = res[0].transcript;
-          if (res.isFinal) {
-            finalText += text;
-          } else {
-            interimText += text;
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const text = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += text;
+        } else {
+          interimTranscript += text;
+        }
+      }
+
+      const fullText = (finalTranscript || interimTranscript).trim();
+      this.transcript = fullText;
+      this.notifyState();
+
+      // Check Wake Word Detection
+      const lower = fullText.toLowerCase();
+      for (const kw of this.wakeWords) {
+        if (lower.includes(kw)) {
+          this.notifyWakeWord(kw);
+          const cleanCommand = lower.replace(kw, '').trim();
+          if (cleanCommand.length > 2) {
+            this.notifyCommand(cleanCommand);
           }
+          break;
         }
+      }
+    };
 
-        const candidateText = (finalText || interimText).trim();
-        this.transcript = candidateText;
-        this.audioLevel = Math.min(100, Math.max(30, candidateText.length * 4 + Math.floor(Math.random() * 40)));
+    this.recognition.onerror = (event: any) => {
+      if (event.error === 'no-speech' || event.error === 'aborted') {
+        // Normal silence timeouts—do NOT destroy session immediately
+        return;
+      }
+      console.warn('[RamaVoice] Speech recognition error:', event.error);
+      this.handleAutoRestart();
+    };
 
-        // Check for defined wake words in real-time (both interim and final for zero delay)
-        const matchedWakeWord = this.detectWakeWord(candidateText);
-        if (matchedWakeWord) {
-          this.activateUIHub(matchedWakeWord, candidateText);
-        } else if (finalText && this.isProcessingCommand) {
-          this.handleFinalCommand(finalText.trim());
-        }
-
-        this.notify();
-      };
-
-      rec.onerror = (event: any) => {
-        const error = event.error;
-        if (error === 'no-speech' || error === 'audio-capture') {
-          return;
-        }
-
-        if (error === 'not-allowed') {
-          console.warn('[RamaVoice] Microphone permission not allowed.');
-          this.autoRestart = false;
-          this.isListening = false;
-          this.stopLevelSimulation();
-          this.notify();
-          return;
-        }
-      };
-
-      rec.onend = () => {
-        this.isListening = false;
-        if (!this.isSpeaking) {
-          this.stopLevelSimulation();
-        }
-        this.notify();
-
-        // Continuous listening auto-restart mechanism
-        if (this.autoRestart && this.continuousMode) {
-          clearTimeout(this.restartTimer);
-          this.restartTimer = setTimeout(() => {
-            if (this.autoRestart && !this.isListening) {
-              try {
-                rec.start();
-              } catch (e) {
-                setTimeout(() => {
-                  if (this.autoRestart && !this.isListening) {
-                    try { rec.start(); } catch (_) {}
-                  }
-                }, 300);
-              }
-            }
-          }, 150);
-        }
-      };
-
-      this.recognition = rec;
-    } catch (e) {
-      this.isSupported = false;
-    }
+    this.recognition.onend = () => {
+      this.isListening = false;
+      this.notifyState();
+      if (this.shouldBeListening) {
+        this.handleAutoRestart();
+      }
+    };
   }
 
-  private startLevelSimulation(mode: 'listening' | 'speaking') {
-    clearInterval(this.levelInterval);
-    this.levelInterval = setInterval(() => {
-      const base = mode === 'speaking' ? 65 : 45;
-      this.audioLevel = Math.floor(base + Math.random() * 35);
-      this.notify();
-    }, 120);
+  private shouldBeListening: boolean = false;
+
+  private handleAutoRestart() {
+    if (this.isRestarting) return;
+    this.isRestarting = true;
+    this.notifyState();
+    clearTimeout(this.restartTimer);
+
+    // Debounce restart by 800ms to eliminate mic indicator flickering
+    this.restartTimer = setTimeout(() => {
+      if (this.shouldBeListening && this.recognition) {
+        try {
+          this.recognition.start();
+        } catch (e) {
+          // Safe catch if already started
+        }
+      }
+      this.isRestarting = false;
+      this.notifyState();
+    }, 800);
   }
 
-  private stopLevelSimulation() {
-    clearInterval(this.levelInterval);
-    this.audioLevel = 0;
-  }
-
-  /**
-   * Detects the defined wake words: 'Hi Rama', 'Hello Rama', 'Open display'
-   */
-  private detectWakeWord(text: string): string | null {
-    if (!text) return null;
-    const lower = text.toLowerCase();
-
-    const now = Date.now();
-    if (now - this.lastWakeWordTime < 2500) {
-      return null;
-    }
-
-    if (lower.includes('hi rama')) return 'Hi Rama';
-    if (lower.includes('hello rama')) return 'Hello Rama';
-    if (lower.includes('open display')) return 'Open display';
-    if (lower.includes('hey rama')) return 'Hey Rama';
-    if (lower.includes('open rama')) return 'Open Rama';
-    if (lower.startsWith('rama ')) return 'Rama';
-
-    return null;
-  }
-
-  public activateUIHub(wakeWord: string, fullTranscript: string = '') {
-    this.lastWakeWordTime = Date.now();
-    this.lastWakeWord = wakeWord;
-    this.isProcessingCommand = true;
-
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(
-        new CustomEvent('rama-activate-hub', {
-          detail: { wakeWord, fullTranscript }
-        })
-      );
-      window.dispatchEvent(
-        new CustomEvent('rama-wake-word', {
-          detail: { wakeWord, fullTranscript }
-        })
-      );
-    }
-
-    this.wakeWordCallbacks.forEach((cb) => {
+  public startListening() {
+    this.shouldBeListening = true;
+    if (this.recognition && !this.isListening) {
       try {
-        cb(wakeWord);
-      } catch (e) {}
-    });
-
-    const lower = fullTranscript.toLowerCase();
-    if (wakeWord === 'Open display' || lower.includes('open display')) {
-      if (lower.includes('prayer') || lower.includes('salah')) {
-        window.location.hash = '#/prayer';
-      } else if (lower.includes('calendar')) {
-        window.location.hash = '#/calendar';
-      } else if (lower.includes('task')) {
-        window.location.hash = '#/tasks';
-      } else if (lower.includes('makeover')) {
-        window.location.hash = '#/makeover';
-      } else {
-        window.location.hash = '#/dashboard';
+        this.recognition.start();
+      } catch (e) {
+        // Safe catch
       }
     }
-
-    this.speak('Rama online. Listening, Architect.');
-
-    const stripped = lower
-      .replace(/hi rama/g, '')
-      .replace(/hello rama/g, '')
-      .replace(/hey rama/g, '')
-      .replace(/open display/g, '')
-      .replace(/open rama/g, '')
-      .replace(/^rama\s+/g, '')
-      .trim();
-
-    if (stripped.length > 2) {
-      setTimeout(() => {
-        this.commandCallbacks.forEach((cb) => cb(stripped));
-        this.isProcessingCommand = false;
-      }, 500);
-    }
-
-    this.notify();
-  }
-
-  private handleFinalCommand(text: string) {
-    if (!text || text.length < 2) return;
-    this.isProcessingCommand = false;
-    this.commandCallbacks.forEach((cb) => cb(text));
   }
 
   public startContinuousListening() {
-    if (!this.recognition || !this.isSupported) return;
-    this.continuousMode = true;
-    this.autoRestart = true;
-
-    if (!this.isListening) {
-      try {
-        this.recognition.start();
-        this.isListening = true;
-        this.notify();
-      } catch (e) {
-        this.isListening = true;
-        this.notify();
-      }
-    }
+    this.startListening();
   }
 
   public stopListening() {
-    this.autoRestart = false;
-    this.continuousMode = false;
-    clearTimeout(this.restartTimer);
-
+    this.shouldBeListening = false;
+    this.isListening = false;
     if (this.recognition) {
       try {
         this.recognition.stop();
-      } catch (e) {}
+      } catch (e) {
+        // Safe catch
+      }
     }
-    this.isListening = false;
-    this.transcript = '';
-    if (!this.isSpeaking) {
-      this.stopLevelSimulation();
-    }
-    this.notify();
+    this.notifyState();
   }
 
-  public toggleListening(): boolean {
+  public toggleListening() {
     if (this.isListening) {
       this.stopListening();
-      return false;
     } else {
-      this.startContinuousListening();
-      return true;
+      this.startListening();
     }
   }
 
-  public onWakeWord(callback: (wakeWord: string) => void): () => void {
-    this.wakeWordCallbacks.add(callback);
-    return () => {
-      this.wakeWordCallbacks.delete(callback);
+  public speak(text: string) {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+
+    window.speechSynthesis.cancel(); // Cancel ongoing speech
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+
+    utterance.onstart = () => {
+      this.isSpeaking = true;
+      this.notifyState();
     };
-  }
 
-  public onCommand(callback: (command: string) => void): () => void {
-    this.commandCallbacks.add(callback);
-    return () => {
-      this.commandCallbacks.delete(callback);
+    utterance.onend = () => {
+      this.isSpeaking = false;
+      this.notifyState();
     };
-  }
 
-  public speak(text: string): Promise<void> {
-    return new Promise((resolve) => {
-      if (typeof window === 'undefined' || !window.speechSynthesis) {
-        resolve();
-        return;
-      }
-
-      try {
-        window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = 1.05;
-        utterance.pitch = 0.98;
-        utterance.volume = 0.9;
-
-        const voices = window.speechSynthesis.getVoices();
-        const preferred = voices.find(
-          (v) =>
-            v.lang.startsWith('en') &&
-            (v.name.includes('Google') ||
-              v.name.includes('Natural') ||
-              v.name.includes('Daniel') ||
-              v.name.includes('Alex'))
-        );
-        if (preferred) utterance.voice = preferred;
-
-        this.isSpeaking = true;
-        this.startLevelSimulation('speaking');
-        this.notify();
-
-        utterance.onend = () => {
-          this.isSpeaking = false;
-          if (!this.isListening) {
-            this.stopLevelSimulation();
-          } else {
-            this.startLevelSimulation('listening');
-          }
-          this.notify();
-          resolve();
-        };
-
-        utterance.onerror = () => {
-          this.isSpeaking = false;
-          if (!this.isListening) {
-            this.stopLevelSimulation();
-          } else {
-            this.startLevelSimulation('listening');
-          }
-          this.notify();
-          resolve();
-        };
-
-        window.speechSynthesis.speak(utterance);
-      } catch (e) {
-        this.isSpeaking = false;
-        this.stopLevelSimulation();
-        this.notify();
-        resolve();
-      }
-    });
-  }
-
-  public stopSpeaking() {
-    if (typeof window !== 'undefined' && window.speechSynthesis) {
-      try {
-        window.speechSynthesis.cancel();
-      } catch (e) {}
-    }
-    this.isSpeaking = false;
-    if (!this.isListening) {
-      this.stopLevelSimulation();
-    }
-    this.notify();
+    window.speechSynthesis.speak(utterance);
   }
 
   public getState(): RamaVoiceState {
     return {
-      isListening: this.isListening,
-      isSupported: this.isSupported,
-      wakeWordDetected: false,
-      lastWakeWord: this.lastWakeWord,
-      transcript: this.transcript,
+      isListening: this.isListening || this.isRestarting,
       isSpeaking: this.isSpeaking,
-      continuousMode: this.continuousMode,
-      audioLevel: this.audioLevel
+      transcript: this.transcript,
+      wakeWordDetected: false,
+      micSensitivity: 0.8
     };
   }
 
   public subscribe(listener: (state: RamaVoiceState) => void): () => void {
-    this.listeners.add(listener);
+    this.stateListeners.add(listener);
     listener(this.getState());
     return () => {
-      this.listeners.delete(listener);
+      this.stateListeners.delete(listener);
     };
   }
 
-  private notify() {
-    const s = this.getState();
-    this.listeners.forEach((cb) => cb(s));
+  public onCommand(listener: (command: string) => void): () => void {
+    this.commandListeners.add(listener);
+    return () => {
+      this.commandListeners.delete(listener);
+    };
+  }
+
+  public onWakeWord(listener: (wakeWord: string) => void): () => void {
+    this.wakeWordListeners.add(listener);
+    return () => {
+      this.wakeWordListeners.delete(listener);
+    };
+  }
+
+  private notifyState() {
+    const st = this.getState();
+    this.stateListeners.forEach(fn => fn(st));
+  }
+
+  private notifyCommand(cmd: string) {
+    this.commandListeners.forEach(fn => fn(cmd));
+  }
+
+  private notifyWakeWord(kw: string) {
+    this.wakeWordListeners.forEach(fn => fn(kw));
   }
 }
 
 export const RamaVoice = new RamaVoiceEngine();
+
+// Compatibility alias for system callers
+(RamaVoice as any).startContinuousListening = function() {
+  this.startListening();
+};

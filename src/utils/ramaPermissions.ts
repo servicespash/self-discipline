@@ -2,8 +2,7 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  * Rama AI System Permissions & Device Authority Registry
- * Defines full granular system permissions with detailed user-facing descriptions,
- * prompting logic, and transparent sovereignty controls.
+ * Robust device authority layer with system overlays, media searching, and background listening.
  */
 
 export type RamaPermissionId = 
@@ -11,16 +10,23 @@ export type RamaPermissionId =
   | 'messaging'
   | 'email'
   | 'voice_assistant'
+  | 'background_wake_word'
+  | 'system_overlay'
   | 'media_storage'
-  | 'in_app_streaming'
+  | 'media_library_search'
+  | 'universal_media_search'
   | 'camera_vision'
+  | 'screen_capture_recording'
   | 'social_sharing'
-  | 'lockdown_control';
+  | 'lockdown_control'
+  | 'exact_alarms'
+  | 'contacts'
+  | 'in_app_streaming';
 
 export interface RamaPermissionDefinition {
   id: RamaPermissionId;
   title: string;
-  category: 'Communication' | 'Media & Storage' | 'Hardware & Voice' | 'System Security';
+  category: 'Communication' | 'Media & Audio Engine' | 'Hardware & Voice' | 'System Security & Overlay';
   icon: string;
   shortDesc: string;
   detailedDesc: string;
@@ -29,7 +35,7 @@ export interface RamaPermissionDefinition {
   requiresHardwarePrompt?: boolean;
 }
 
-const STORAGE_KEY = 'cymatic_rama_permissions_v1';
+const STORAGE_KEY = 'cymatic_rama_permissions_v3';
 
 export const PERMISSION_DEFINITIONS: Record<RamaPermissionId, Omit<RamaPermissionDefinition, 'isGranted'>> = {
   telephony: {
@@ -37,90 +43,150 @@ export const PERMISSION_DEFINITIONS: Record<RamaPermissionId, Omit<RamaPermissio
     title: 'Phone Calls & Carrier Telephony',
     category: 'Communication',
     icon: 'PhoneCall',
-    shortDesc: 'Place calls with network carrier & SIM selection prompt.',
-    detailedDesc: 'Allows Rama AI to dial phone numbers using your device telephone dialer. Rama prompts you to confirm the recipient number and select your preferred network carrier or SIM card before connecting.',
-    disciplinaryPurpose: 'Enables voice communications without needing to search for contacts while maintaining disciplined focus.'
+    shortDesc: 'Place calls via native dialer.',
+    detailedDesc: 'Allows Rama AI to place phone calls via carrier or SIM selector.',
+    disciplinaryPurpose: 'Hands-free emergency or executive calling without search friction.'
   },
   messaging: {
     id: 'messaging',
-    title: 'Message Designing & WhatsApp Dispatch',
+    title: 'Message Dispatch & WhatsApp Engine',
     category: 'Communication',
     icon: 'MessageSquare',
-    shortDesc: 'Design disciplined messages and dispatch via WhatsApp or SMS.',
-    detailedDesc: 'Allows Rama AI to craft high-clarity messages, format them for export, and route them to WhatsApp or default SMS with user confirmation.',
-    disciplinaryPurpose: 'Prevents aimless texting by having Rama structure clear, goal-oriented communications.'
+    shortDesc: 'Draft and send SMS or WhatsApp messages.',
+    detailedDesc: 'Drafts structured messages and forwards them via SMS or WhatsApp intent.',
+    disciplinaryPurpose: 'Prevents distraction by dispatching concise, pre-structured messages.'
   },
   email: {
     id: 'email',
-    title: 'Email Composition & Mailto Intent',
+    title: 'Executive Email Composition',
     category: 'Communication',
     icon: 'Mail',
-    shortDesc: 'Compose and dispatch structured emails.',
-    detailedDesc: 'Allows Rama AI to compose emails with clear subjects and formatted bodies, sending them via system mail intents.',
-    disciplinaryPurpose: 'Eliminates inbox distraction by drafting concise executive correspondence.'
+    shortDesc: 'Draft concise email communications.',
+    detailedDesc: 'Allows Rama AI to compose and send emails via system mail clients.',
+    disciplinaryPurpose: 'Reduces inbox scrolling with AI-assisted drafting.'
   },
   voice_assistant: {
     id: 'voice_assistant',
-    title: 'Voice Engine & "Hi Rama" Wake Word',
+    title: 'Voice Engine & Speech Synthesis (TTS)',
     category: 'Hardware & Voice',
     icon: 'Mic',
-    shortDesc: 'Function as default device audio assistant with wake word.',
-    detailedDesc: 'Enables continuous audio responsiveness for "Hi Rama" or "Hey Rama" to summon the assistant hands-free, functioning just like device voice assistants with real-time Speech Synthesis (TTS).',
-    disciplinaryPurpose: 'Provides instant hands-free discipline coaching without touching the screen.',
+    shortDesc: 'Real-time text-to-speech voice response.',
+    detailedDesc: 'Unlocks browser/system audio context for smooth, uninhibited voice feedback.',
+    disciplinaryPurpose: 'Delivers vocal discipline feedback without requiring screen interaction.',
     requiresHardwarePrompt: true
+  },
+  background_wake_word: {
+    id: 'background_wake_word',
+    title: 'Background Wake-Word ("Hey Rama")',
+    category: 'Hardware & Voice',
+    icon: 'Radio',
+    shortDesc: 'Listen for wake-word when app is minimized or screen off.',
+    detailedDesc: 'Runs background audio service to detect "Hey Rama" or "Hi Rama" and wake up the assistant.',
+    disciplinaryPurpose: 'Provides continuous voice assistance without manually unlocking the device.',
+    requiresHardwarePrompt: true
+  },
+  system_overlay: {
+    id: 'system_overlay',
+    title: 'System Overlay Window (SYSTEM_ALERT_WINDOW)',
+    category: 'System Security & Overlay',
+    icon: 'Maximize',
+    shortDesc: 'Draw floating Rama UI over other apps.',
+    detailedDesc: 'Grants permission to pop up as a system floating window over any running app when invoked.',
+    disciplinaryPurpose: 'Enforces discipline interventions and floating assistant access across the entire Android OS.'
   },
   media_storage: {
     id: 'media_storage',
-    title: 'Device Storage & Local Media Files',
-    category: 'Media & Storage',
+    title: 'Local Phone Storage Access',
+    category: 'Media & Audio Engine',
     icon: 'FolderOpen',
-    shortDesc: 'Access device audio tracks (.mp3, .wav) and stored images.',
-    detailedDesc: 'Allows Rama AI to access local audio files from your phone or computer storage to play them directly inside the system, or pick images from storage for sharing.',
-    disciplinaryPurpose: 'Allows listening to your personal offline audio lectures, audiobooks, or ambient tracks without browsing distractors.'
+    shortDesc: 'Read audio files directly from phone storage.',
+    detailedDesc: 'Grants access to read local audio tracks (.mp3, .wav, .m4a) stored in internal device memory.',
+    disciplinaryPurpose: 'Enables offline music and educational playback directly from device storage.'
   },
-  in_app_streaming: {
-    id: 'in_app_streaming',
-    title: 'In-App Embedded Music Streaming',
-    category: 'Media & Storage',
+  media_library_search: {
+    id: 'media_library_search',
+    title: 'Local Storage Track Querying',
+    category: 'Media & Audio Engine',
+    icon: 'Search',
+    shortDesc: 'Search device storage for specific tracks by title/artist.',
+    detailedDesc: 'Indexes local device music so you can request songs like "Latty Adams - Behind the Dark" from local storage.',
+    disciplinaryPurpose: 'Finds your exact stored media instantly without opening music player apps.'
+  },
+  universal_media_search: {
+    id: 'universal_media_search',
+    title: 'Fallback Free Streaming Engine',
+    category: 'Media & Audio Engine',
     icon: 'Music',
-    shortDesc: 'Play Spotify, YouTube Music, Deezer & local audio in the UI.',
-    detailedDesc: 'Allows Rama AI to stream songs from YouTube Music, Spotify, Deezer, and local storage directly within the Cymatic OS interface without launching third-party external apps.',
-    disciplinaryPurpose: 'Preserves focus by keeping music playback strictly embedded inside the OS so you never get lured into third-party social feeds.'
+    shortDesc: 'Fallback search across online sources if not found locally.',
+    detailedDesc: 'Searches local device files first; if missing, queries open streaming sources (YouTube, Audiomack, local sanctuary assets).',
+    disciplinaryPurpose: 'Guarantees requested songs (e.g. Alec Benjamin, Watendawili, Latty Adams) play smoothly without app bouncing.'
   },
   camera_vision: {
     id: 'camera_vision',
     title: 'Camera & Vision Feedback',
     category: 'Hardware & Voice',
     icon: 'Camera',
-    shortDesc: 'Real-time camera or screen recording preview.',
-    detailedDesc: 'Enables live device camera and screen preview for visual feedback, posture checks, workspace audits, and physical conditioning verification.',
-    disciplinaryPurpose: 'Permits visual accountability for physical workspace and posture audits with strict client-side privacy.',
-    requiresHardwarePrompt: true
+    shortDesc: 'Camera access for workspace & posture checks.',
+    detailedDesc: 'Enables camera preview for posture alignment and physical workspace checks.',
+    disciplinaryPurpose: 'Real-time visual accountability with local processing.'
+  },
+  screen_capture_recording: {
+    id: 'screen_capture_recording',
+    title: 'Screen Recording & Capture Authority',
+    category: 'Hardware & Voice',
+    icon: 'Video',
+    shortDesc: 'Capture screen state for focus auditing.',
+    detailedDesc: 'Grants permission to record or snapshot screen content during active focus sessions.',
+    disciplinaryPurpose: 'Detects doom-scrolling or off-task app usage during discipline blocks.'
   },
   social_sharing: {
     id: 'social_sharing',
-    title: 'Social Media & Native OS Sharing',
+    title: 'Native OS Web Share',
     category: 'Communication',
     icon: 'Share2',
-    shortDesc: 'Share designed content and images to social media apps.',
-    detailedDesc: 'Allows Rama AI to invoke the native OS Web Share dialog to pass messages, referral links, and stored images directly to your installed social apps.',
-    disciplinaryPurpose: 'Enables deliberate, one-click sharing without getting trapped browsing infinite feeds.'
+    shortDesc: 'Share generated content via system dialog.',
+    detailedDesc: 'Invokes native share sheet to send quotes or updates directly to target apps.',
+    disciplinaryPurpose: 'One-click outbound sharing without feed browsing.'
   },
   lockdown_control: {
     id: 'lockdown_control',
-    title: 'System Lockdown & Intent Interception',
-    category: 'System Security',
+    title: 'App Suppression & Lockdown Interception',
+    category: 'System Security & Overlay',
     icon: 'Lock',
-    shortDesc: 'Engage timed app suppression and distraction blackouts.',
-    detailedDesc: 'Authorizes Rama AI to enforce algorithmic lockdown, suppressing high-dopamine social apps and distracting packages for designated minutes.',
-    disciplinaryPurpose: 'Guarantees uncompromised execution by blocking distractors via OS intent interception.'
+    shortDesc: 'Block distracting apps during focus sessions.',
+    detailedDesc: 'Intercepts launched app intents and forces lockouts for distracting packages.',
+    disciplinaryPurpose: 'Enforces hard digital boundaries during study or prayer blocks.'
+  },
+  exact_alarms: {
+    id: 'exact_alarms',
+    title: 'Android Exact Alarms (SCHEDULE_EXACT_ALARM)',
+    category: 'System Security & Overlay',
+    icon: 'Clock',
+    shortDesc: 'Unthrottled exact alarm execution for Adhan.',
+    detailedDesc: 'Prevents Android battery saver from delaying background Adhan prayer calls and alarms.',
+    disciplinaryPurpose: 'Guarantees exact-minute spiritual calls and schedule notifications.'
+  },
+  contacts: {
+    id: 'contacts',
+    title: 'Device Contacts Access',
+    category: 'Communication',
+    icon: 'Users',
+    shortDesc: 'Match contacts for mutual consent agreements.',
+    detailedDesc: 'Reads device contacts to verify bilateral governance partners.',
+    disciplinaryPurpose: 'Seamless institutional register and accountability syncing.'
+  },
+  in_app_streaming: {
+    id: 'in_app_streaming',
+    title: 'In-App Media Streaming',
+    category: 'Media & Audio Engine',
+    icon: 'Music',
+    shortDesc: 'Stream music and audio directly within Cymatic OS.',
+    detailedDesc: 'Grants permission to stream open media and music tracks inside the application interface.',
+    disciplinaryPurpose: 'Enables focused audio playback without context switching to external apps.'
   }
 };
 
 export class RamaPermissionsManager {
-  /**
-   * Load stored permissions from localStorage, defaulting to granted for smooth experience
-   */
   public static getGrantedMap(): Record<RamaPermissionId, boolean> {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -131,17 +197,23 @@ export class RamaPermissionsManager {
       console.warn('[RamaPermissions] Failed to load permissions:', e);
     }
 
-    // Default permissions: all initial core permissions granted for full capability
     const defaults: Record<RamaPermissionId, boolean> = {
       telephony: true,
       messaging: true,
       email: true,
       voice_assistant: true,
+      background_wake_word: true,
+      system_overlay: true,
       media_storage: true,
-      in_app_streaming: true,
+      media_library_search: true,
+      universal_media_search: true,
       camera_vision: true,
+      screen_capture_recording: true,
       social_sharing: true,
-      lockdown_control: true
+      lockdown_control: true,
+      exact_alarms: true,
+      contacts: true,
+      in_app_streaming: true
     };
     this.saveGrantedMap(defaults);
     return defaults;
@@ -192,11 +264,18 @@ export class RamaPermissionsManager {
       messaging: true,
       email: true,
       voice_assistant: true,
+      background_wake_word: true,
+      system_overlay: true,
       media_storage: true,
-      in_app_streaming: true,
+      media_library_search: true,
+      universal_media_search: true,
       camera_vision: true,
+      screen_capture_recording: true,
       social_sharing: true,
-      lockdown_control: true
+      lockdown_control: true,
+      exact_alarms: true,
+      contacts: true,
+      in_app_streaming: true
     };
     this.saveGrantedMap(allTrue);
   }

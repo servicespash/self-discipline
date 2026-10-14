@@ -1,7 +1,7 @@
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
- * Legal, Trust, Author Dossier & Cloud Layer Deployment Hub
+ * Legal, Trust, Author Dossier & Cloud Layer Deployment Engine
  * Locking down Author, Auditor, Rights Reserved, Google Trust, Terms & Privacy.
  */
 
@@ -62,7 +62,7 @@ export const LegalTrustModal: React.FC<LegalTrustProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-base sm:text-lg font-black uppercase tracking-wider text-white">
-                Legal, Trust &amp; Architecture Hub
+                Legal, Trust &amp; Architecture Engine
               </h2>
               <span className="px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-500/30 text-[9px] font-black uppercase">
                 Lockdown Certified

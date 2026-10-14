@@ -34,6 +34,7 @@ export const ProfileManagement: React.FC<ProfileManagementProps> = ({ isOpen, on
   const [activeTab, setActiveTab] = useState<'profile' | 'subscription' | 'referrals' | 'settings' | 'danger'>('profile');
   
   const [moniker, setMoniker] = useState<string>(session?.moniker || '');
+  const [role, setRole] = useState<string>(session?.role || 'student');
   const [workTitle, setWorkTitle] = useState<string>('Discipline Architect & Practitioner');
   const [userLicense, setUserLicense] = useState<DynamicReferralLicense | null>(null);
   const [copied, setCopied] = useState<boolean>(false);
@@ -43,6 +44,7 @@ export const ProfileManagement: React.FC<ProfileManagementProps> = ({ isOpen, on
   useEffect(() => {
     if (session) {
       setMoniker(session.moniker);
+      if (session.role) setRole(session.role);
     }
   }, [session]);
 
@@ -61,17 +63,18 @@ export const ProfileManagement: React.FC<ProfileManagementProps> = ({ isOpen, on
     e.preventDefault();
     if (session) {
       const cleanMoniker = moniker.trim() || session.moniker;
-      const updated = { ...session, moniker: cleanMoniker };
-      localStorage.setItem('sdc_user_session_v1', JSON.stringify(updated));
+      const cleanRole = role.trim() || session.role;
+      const updated = { ...session, moniker: cleanMoniker, role: cleanRole };
+      localStorage.setItem('cymatic_session_v2', JSON.stringify(updated));
 
       // Sync with Supabase
       try {
-        await supabase.from('users').update({ moniker: cleanMoniker }).eq('uid', session.uid);
+        await supabase.from('users').update({ moniker: cleanMoniker, role: cleanRole }).eq('uid', session.uid);
       } catch (err) {
-        console.warn('[ProfileManagement] Supabase moniker update warning:', err);
+        console.warn('[ProfileManagement] Supabase profile update warning:', err);
       }
 
-      setSaveToast('Profile moniker & settings updated successfully!');
+      setSaveToast('Profile role & settings updated successfully!');
       setTimeout(() => setSaveToast(null), 3000);
     }
   };
@@ -112,7 +115,7 @@ export const ProfileManagement: React.FC<ProfileManagementProps> = ({ isOpen, on
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-2 sm:p-4 bg-gray-950/90 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="w-full max-w-lg h-[95vh] sm:h-auto sm:max-h-[85vh] bg-gray-900 border border-gray-800 rounded-3xl shadow-2xl text-gray-100 flex flex-col">
+      <div className="w-full max-w-3xl h-[95vh] sm:h-auto sm:max-h-[85vh] bg-gray-900 border border-gray-800 rounded-3xl shadow-2xl text-gray-100 flex flex-col">
         
         {/* Header */}
         <div className="p-4 md:p-6 border-b border-gray-800 flex items-center justify-between bg-gray-950/60">
@@ -151,7 +154,7 @@ export const ProfileManagement: React.FC<ProfileManagementProps> = ({ isOpen, on
 
         {/* Modal Body */}
         <div className="flex-1 flex flex-col overflow-y-auto p-4 md:p-6 space-y-5">
-          {activeTab === 'profile' && <ProfileTab moniker={moniker} setMoniker={setMoniker} workTitle={workTitle} setWorkTitle={setWorkTitle} session={session} handleSaveProfile={handleSaveProfile} setActiveTab={(tab: any) => setActiveTab(tab)} saveToast={saveToast} />}
+          {activeTab === 'profile' && <ProfileTab moniker={moniker} setMoniker={setMoniker} role={role} setRole={setRole} workTitle={workTitle} setWorkTitle={setWorkTitle} session={session} handleSaveProfile={handleSaveProfile} setActiveTab={(tab: any) => setActiveTab(tab)} saveToast={saveToast} />}
           {activeTab === 'subscription' && <SubscriptionTab session={session} setActiveTab={(tab: any) => setActiveTab(tab)} onExport={() => {
             const data = JSON.stringify(localStorage, null, 2);
             const blob = new Blob([data], { type: 'application/json' });

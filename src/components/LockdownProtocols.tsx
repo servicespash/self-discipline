@@ -124,7 +124,7 @@ export default function LockdownProtocols() {
   };
 
   return (
-    <div className="space-y-6 w-full max-w-5xl mx-auto pb-12 text-gray-100 min-w-0">
+    <div className="space-y-6 w-full max-w-7xl mx-auto pb-12 text-gray-100 min-w-0">
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed top-6 right-6 z-50 px-4 py-3 bg-emerald-950/95 border border-emerald-500/50 rounded-2xl shadow-2xl text-emerald-300 text-xs font-mono font-bold flex items-center gap-2 animate-in fade-in zoom-in-95">

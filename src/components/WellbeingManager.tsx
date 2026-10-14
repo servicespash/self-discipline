@@ -22,7 +22,7 @@ export default function WellbeingAndMonitoringHub() {
   };
 
   return (
-    <div className="p-4 sm:p-8 max-w-5xl mx-auto w-full space-y-8">
+    <div className="p-4 sm:p-8 max-w-7xl mx-auto w-full space-y-8">
       <div>
         <h2 className="text-2xl font-black text-white uppercase tracking-widest">Wellbeing & Monitoring Hub</h2>
         <p className="text-sm text-gray-400">Track your screen time, wellbeing nudges, and system discipline statistics.</p>

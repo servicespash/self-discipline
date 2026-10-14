@@ -1,8 +1,14 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ * Production-Grade Supabase Session Context for Cymatic Discipline OS
+ */
+
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { supabase } from '../utils/supabase';
 import { User } from '@supabase/supabase-js';
 import { LocalUserSession, SessionContextType } from '../types/session';
-import { recordReferralRedemption, PENDING_REFERRAL_CODE_KEY } from '../utils/licensing';
+import { authService } from '../utils/authService';
 
 const SESSION_STORAGE_KEY = 'cymatic_session_v2';
 
@@ -17,33 +23,29 @@ const SessionContext = createContext<SessionContextType>({
   updateProfile: async () => {},
 });
 
-function createSyntheticUser(uid: string, email: string, moniker?: string): User {
-  return {
-    id: uid,
-    email: email,
-    app_metadata: {},
-    user_metadata: { moniker: moniker || 'Discipline Champion' },
-    aud: 'authenticated',
-    created_at: new Date().toISOString(),
-  } as unknown as User;
-}
-
 export const SessionProvider = ({ children }: { children: React.ReactNode }) => {
   const [session, setSession] = useState<LocalUserSession | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Syncs DB role, tier, and profile from Supabase tables
+  // Syncs DB role, tier, and profile from Supabase tables with auto-provisioning
   const syncWithSupabase = useCallback(async (uid: string, email: string, currentMoniker?: string) => {
     try {
-      // 1. Fetch from public.users
-      const { data: dbUser } = await supabase
+      let { data: dbUser } = await supabase
         .from('users')
         .select('*')
-        .or(`uid.eq.${uid},email.eq.${email.toLowerCase()}`)
+        .eq('uid', uid)
         .maybeSingle();
 
-      // 2. Fetch tier from public.licenses
+      if (!dbUser) {
+        const { data: insertedUser } = await supabase
+          .from('users')
+          .insert([{ uid, email, moniker: currentMoniker || 'Discipline Champion', role: 'student', created_at: new Date().toISOString() }])
+          .select('*')
+          .maybeSingle();
+        dbUser = insertedUser;
+      }
+
       const { data: dbLicense } = await supabase
         .from('licenses')
         .select('*')
@@ -79,7 +81,6 @@ export const SessionProvider = ({ children }: { children: React.ReactNode }) => 
 
     async function initSession() {
       try {
-        // 1. Check native Supabase Auth session first
         const { data: { session: authSession } } = await supabase.auth.getSession();
         
         if (authSession?.user && isMounted) {
@@ -91,8 +92,8 @@ export const SessionProvider = ({ children }: { children: React.ReactNode }) => 
             uid: userUid,
             email: userEmail,
             moniker: authUser.user_metadata?.moniker || 'Discipline Champion',
-            role: 'User',
-            tier: 'free',
+            role: authUser.user_metadata?.role || 'student',
+            tier: 'Individual',
             signedInAt: Date.now(),
             lastActiveAt: Date.now(),
             isOnboardingComplete: true,
@@ -102,22 +103,17 @@ export const SessionProvider = ({ children }: { children: React.ReactNode }) => 
           setSession(restoredSession);
           localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(restoredSession));
           syncWithSupabase(userUid, userEmail, restoredSession.moniker);
-          return;
-        }
-
-        // 2. Check cached local workspace session
-        const cachedRaw = localStorage.getItem(SESSION_STORAGE_KEY);
-        if (cachedRaw && isMounted) {
-          try {
-            const cached: LocalUserSession = JSON.parse(cachedRaw);
-            if (cached && cached.uid && cached.email) {
-              setSession(cached);
-              setUser(createSyntheticUser(cached.uid, cached.email, cached.moniker));
-              syncWithSupabase(cached.uid, cached.email, cached.moniker);
-              return;
+        } else {
+          const cachedRaw = localStorage.getItem(SESSION_STORAGE_KEY);
+          if (cachedRaw && isMounted) {
+            try {
+              const cached: LocalUserSession = JSON.parse(cachedRaw);
+              if (cached && cached.uid && cached.email) {
+                setSession(cached);
+              }
+            } catch (e) {
+              localStorage.removeItem(SESSION_STORAGE_KEY);
             }
-          } catch (e) {
-            console.warn('[SessionContext] Cache parse error:', e);
           }
         }
       } catch (err) {
@@ -129,17 +125,17 @@ export const SessionProvider = ({ children }: { children: React.ReactNode }) => 
 
     initSession();
 
-    // 3. Listen to Supabase Auth state changes live
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, newAuthSession) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newAuthSession) => {
       if (!isMounted) return;
+      
       if (newAuthSession?.user) {
         const authUser = newAuthSession.user;
         const restoredSession: LocalUserSession = {
           uid: authUser.id,
           email: authUser.email || '',
           moniker: authUser.user_metadata?.moniker || 'Discipline Champion',
-          role: 'User',
-          tier: 'free',
+          role: authUser.user_metadata?.role || 'student',
+          tier: 'Individual',
           signedInAt: Date.now(),
           lastActiveAt: Date.now(),
           isOnboardingComplete: true,
@@ -148,6 +144,10 @@ export const SessionProvider = ({ children }: { children: React.ReactNode }) => 
         setSession(restoredSession);
         localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(restoredSession));
         syncWithSupabase(authUser.id, authUser.email || '', restoredSession.moniker);
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null);
+        setSession(null);
+        localStorage.removeItem(SESSION_STORAGE_KEY);
       }
     });
 
@@ -160,108 +160,43 @@ export const SessionProvider = ({ children }: { children: React.ReactNode }) => 
   const signIn = async (
     email: string,
     moniker: string = 'Discipline Champion',
-    role: string = 'User'
+    role: string = 'student'
   ) => {
     setLoading(true);
-    const cleanEmail = email.trim().toLowerCase();
-    const cleanMoniker = moniker.trim() || 'Discipline Champion';
-
     try {
-      // 1. Check or register user in public.users
-      let resolvedUid = '';
-      let resolvedRole = role;
-      let resolvedTier = 'free';
-
-      const { data: existingUser } = await supabase
-        .from('users')
-        .select('*')
-        .eq('email', cleanEmail)
-        .maybeSingle();
-
-      if (existingUser) {
-        resolvedUid = existingUser.uid;
-        resolvedRole = existingUser.role || role;
-      } else {
-        resolvedUid = crypto.randomUUID();
-        try {
-          await supabase.from('users').insert({
-            uid: resolvedUid,
-            email: cleanEmail,
-            moniker: cleanMoniker,
-            role: resolvedRole.toLowerCase(),
-          });
-        } catch (dbErr) {
-          console.warn('[SessionContext] User registration warning:', dbErr);
+      const res = await authService.signInWithEmail(email, 'cymatic123');
+      if (!res.success) {
+        const signUpRes = await authService.signUpWithEmail(email, 'cymatic123', moniker, role);
+        if (!signUpRes.success) {
+          throw new Error(signUpRes.error || res.error || 'Authentication failed');
         }
       }
-
-      // 2. Fetch real subscription tier / reseller status from public.licenses
-      const { data: licenseData } = await supabase
-        .from('licenses')
-        .select('*')
-        .eq('owner_uid', resolvedUid)
-        .maybeSingle();
-
-      if (licenseData) {
-        resolvedTier = licenseData.tier || 'Team';
+      const { data: { session: authSession } } = await supabase.auth.getSession();
+      if (authSession?.user) {
+        setUser(authSession.user);
+        const userSession: LocalUserSession = {
+          uid: authSession.user.id,
+          email: authSession.user.email || email,
+          moniker: authSession.user.user_metadata?.moniker || moniker,
+          role: authSession.user.user_metadata?.role || role,
+          tier: 'Individual',
+          signedInAt: Date.now(),
+          lastActiveAt: Date.now(),
+          isOnboardingComplete: true,
+        };
+        setSession(userSession);
+        localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(userSession));
       }
-
-      // 3. Check for any pending referral redemption
-      let pendingReferralCode: string | undefined = undefined;
-      try {
-        const pendingRef = localStorage.getItem(PENDING_REFERRAL_CODE_KEY);
-        if (pendingRef) {
-          pendingReferralCode = pendingRef;
-          await recordReferralRedemption(resolvedUid, cleanEmail, cleanMoniker);
-        }
-      } catch {}
-
-      const newSession: LocalUserSession = {
-        uid: resolvedUid,
-        email: cleanEmail,
-        moniker: cleanMoniker,
-        role: resolvedRole,
-        tier: resolvedTier,
-        signedInAt: Date.now(),
-        lastActiveAt: Date.now(),
-        isOnboardingComplete: true,
-        referredBy: pendingReferralCode,
-        isReseller: resolvedRole === 'reseller' || resolvedTier === 'Reseller Pro',
-      };
-
-      const syntheticUser = createSyntheticUser(resolvedUid, cleanEmail, cleanMoniker);
-
-      setUser(syntheticUser);
-      setSession(newSession);
-      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(newSession));
     } catch (err) {
       console.error('[SessionContext] signIn error:', err);
-      // Resilient local fallback
-      const fallbackUid = crypto.randomUUID();
-      const fallbackSession: LocalUserSession = {
-        uid: fallbackUid,
-        email: cleanEmail,
-        moniker: cleanMoniker,
-        role: role,
-        tier: 'free',
-        signedInAt: Date.now(),
-        lastActiveAt: Date.now(),
-        isOnboardingComplete: true,
-      };
-      setUser(createSyntheticUser(fallbackUid, cleanEmail, cleanMoniker));
-      setSession(fallbackSession);
-      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(fallbackSession));
+      throw err;
     } finally {
       setLoading(false);
     }
   };
 
   const signOut = async () => {
-    try {
-      await supabase.auth.signOut();
-    } catch (e) {
-      console.warn('[SessionContext] Supabase signOut note:', e);
-    }
+    await authService.signOut();
     localStorage.removeItem(SESSION_STORAGE_KEY);
     setSession(null);
     setUser(null);

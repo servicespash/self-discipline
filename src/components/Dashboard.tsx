@@ -22,6 +22,7 @@ import PWAInstallBanner from './PWAInstallBanner';
 import LegalTrustModal from './LegalTrustModal';
 import { DisciplineBridge, SystemLockdownPayload } from '../DisciplineBridge';
 import { ProfileManagement } from './ProfileManagement';
+import { ContractNegotiator } from './governance/ContractNegotiator';
 import { getOriginatingUserLicenses, triggerNativeReferralShare } from '../utils/licensing';
 
 export default function Dashboard({ accessToken }: { accessToken: string | null }) {
@@ -50,7 +51,7 @@ export default function Dashboard({ accessToken }: { accessToken: string | null 
 
   const getTitle = () => {
     switch(location.pathname) {
-      case '/dashboard': return 'Core Hub';
+      case '/dashboard': return 'Core Engine';
       case '/apps': return 'App Authority';
       case '/settings': return 'Lockdown Protocols';
       case '/tasks': return 'Task Manager';
@@ -61,6 +62,7 @@ export default function Dashboard({ accessToken }: { accessToken: string | null 
       case '/rio': return 'Google Sync';
       case '/focus': return 'Focus & VPN Firewall';
       case '/reseller': return 'Referrals & Team Seats';
+      case '/governance': return 'Governance & Contracts';
       case '/wellbeing': return 'Wellbeing Manager';
       case '/trust': return 'Google Trust & Audit';
       case '/author': return 'Author & Ideologist Dossier';
@@ -160,6 +162,7 @@ export default function Dashboard({ accessToken }: { accessToken: string | null 
                <Route path="/apps" element={<Layout><AppAuthority /></Layout>} />
                <Route path="/focus" element={<Layout><FocusVpnManager /></Layout>} />
                <Route path="/reseller" element={<Layout><ResellerManager /></Layout>} />
+               <Route path="/governance" element={<Layout><ContractNegotiator currentUserUid={session?.uid || 'sandbox_architect_uid'} userRole={session?.role || 'student'} userMoniker={session?.moniker || 'Discipline Champion'} /></Layout>} />
                <Route path="/trust" element={<Layout><LegalTrustModal initialTab="trust" /></Layout>} />
                <Route path="/author" element={<Layout><LegalTrustModal initialTab="author" /></Layout>} />
                <Route path="/terms" element={<Layout><LegalTrustModal initialTab="terms" /></Layout>} />
