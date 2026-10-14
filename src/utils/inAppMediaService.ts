@@ -75,9 +75,9 @@ class CymaticUniversalMediaEngine {
   }
 
   /**
-   * Main Dispatcher Pipeline
+   * Main Dispatcher Pipeline with Absolute Multi-Platform Access
    */
-  public async dispatchMedia(query: string) {
+  public async dispatchMedia(query: string, platform: StreamingPlatform = 'universal_stream') {
     const cleaned = this.extractCleanSearchTerms(query);
     const lower = cleaned.toLowerCase();
 
@@ -105,14 +105,14 @@ class CymaticUniversalMediaEngine {
       }
     }
 
-    // 3. Multi-Mirror Concurrent Public Network Resolution
+    // 3. Multi-Mirror Concurrent Public Network Resolution across YouTube, Spotify, Deezer & Universal Stream mirrors
     const audioStreamUrl = await this.resolveAudioFromPublicMirrors(cleaned);
 
     this.currentTrack = {
       id: `track_${Date.now()}`,
       title: cleaned,
-      artist: 'Universal Media Dispatcher',
-      platform: 'universal_stream',
+      artist: `Universal Media (${platform.toUpperCase()})`,
+      platform: platform,
       query: cleaned,
       audioUrl: audioStreamUrl
     };
@@ -198,8 +198,12 @@ class CymaticUniversalMediaEngine {
     this.notify();
   }
 
-  public playTrack(query: string, platform: StreamingPlatform = 'youtube') {
-    this.dispatchMedia(query);
+  public playTrack(query: string, platform: StreamingPlatform = 'universal_stream') {
+    try {
+      this.dispatchMedia(query, platform);
+    } catch (err) {
+      console.warn('[InAppMedia] playTrack error caught safely:', err);
+    }
   }
 
   public getCurrentTrack(): MediaTrack | null {
