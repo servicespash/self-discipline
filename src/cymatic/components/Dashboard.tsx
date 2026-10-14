@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, Navigate, useLocation } from './';
+import { Routes, Route, Navigate, useLocation } from '@/cymatic/lib/hash-router';
 import { useSession } from '../context/SessionContext';
 import { Layout } from './ui/Layout';
 import { Sidebar } from './dashboard/Sidebar';

@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { HashRouter } from './';
+import { HashRouter } from '@/cymatic/lib/hash-router';
 import { SessionProvider, useSession } from './context/SessionContext';
 import Dashboard from './components/Dashboard';
 import LockdownOverlay from './components/LockdownOverlay';

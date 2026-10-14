@@ -7,7 +7,7 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { NavLink } from './';
+import { NavLink } from '@/cymatic/lib/hash-router';
 import { PackageManager, AppPackageInfo } from '../utils/packageManager';
 import { DisciplineBridge } from '../DisciplineBridge';
 import { 
