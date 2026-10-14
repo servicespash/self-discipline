@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink } from './';
 import { DisciplineBridge, SystemLockdownPayload } from '../DisciplineBridge';
 import { PackageManager } from '../utils/packageManager';
 import { 

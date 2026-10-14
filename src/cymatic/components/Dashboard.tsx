@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from './';
 import { useSession } from '../context/SessionContext';
 import { Layout } from './ui/Layout';
 import { Sidebar } from './dashboard/Sidebar';
@@ -22,7 +22,6 @@ import PWAInstallBanner from './PWAInstallBanner';
 import LegalTrustModal from './LegalTrustModal';
 import { DisciplineBridge, SystemLockdownPayload } from '../DisciplineBridge';
 import { ProfileManagement } from './ProfileManagement';
-import { ContractNegotiator } from './governance/ContractNegotiator';
 import { getOriginatingUserLicenses, triggerNativeReferralShare } from '../utils/licensing';
 
 export default function Dashboard({ accessToken }: { accessToken: string | null }) {
@@ -162,7 +161,6 @@ export default function Dashboard({ accessToken }: { accessToken: string | null 
                <Route path="/apps" element={<Layout><AppAuthority /></Layout>} />
                <Route path="/focus" element={<Layout><FocusVpnManager /></Layout>} />
                <Route path="/reseller" element={<Layout><ResellerManager /></Layout>} />
-               <Route path="/governance" element={<Layout><ContractNegotiator currentUserUid={session?.uid || 'sandbox_architect_uid'} userRole={session?.role || 'student'} userMoniker={session?.moniker || 'Discipline Champion'} /></Layout>} />
                <Route path="/trust" element={<Layout><LegalTrustModal initialTab="trust" /></Layout>} />
                <Route path="/author" element={<Layout><LegalTrustModal initialTab="author" /></Layout>} />
                <Route path="/terms" element={<Layout><LegalTrustModal initialTab="terms" /></Layout>} />

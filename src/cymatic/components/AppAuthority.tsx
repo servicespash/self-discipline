@@ -7,7 +7,7 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink } from './';
 import { PackageManager, AppPackageInfo } from '../utils/packageManager';
 import { DisciplineBridge } from '../DisciplineBridge';
 import { 

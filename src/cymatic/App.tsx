@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { HashRouter } from 'react-router-dom';
+import { HashRouter } from './';
 import { SessionProvider, useSession } from './context/SessionContext';
 import Dashboard from './components/Dashboard';
 import LockdownOverlay from './components/LockdownOverlay';

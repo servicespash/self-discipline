@@ -6,7 +6,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { CheckCircle2, CalendarDays, ArrowRight } from 'lucide-react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation } from './';
 import { DisciplineBridge } from '../DisciplineBridge';
 import { TaskFilterBar } from './tasks/TaskFilterBar';
 import { AddTaskForm } from './tasks/AddTaskForm';
