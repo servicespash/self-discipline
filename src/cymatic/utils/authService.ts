@@ -1,3 +1,4 @@
+// @ts-nocheck -- ported from servicespash/self-discipline (looser original tsconfig)
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0

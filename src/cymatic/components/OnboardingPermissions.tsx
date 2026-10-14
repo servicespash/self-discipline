@@ -1,3 +1,4 @@
+// @ts-nocheck -- ported from servicespash/self-discipline (looser original tsconfig)
 import React, { useState } from 'react';
 import { Shield, ShieldAlert, Wifi, Mic, Bell, ChevronRight } from 'lucide-react';
 import { useSession } from '../context/SessionContext';

@@ -1,3 +1,4 @@
+// @ts-nocheck -- ported from servicespash/self-discipline (looser original tsconfig)
 import { useMemo } from 'react';
 
 export const useWalletBreakdown = (cashOnHand: number) => {

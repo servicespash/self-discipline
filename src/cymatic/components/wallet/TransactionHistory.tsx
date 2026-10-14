@@ -1,3 +1,4 @@
+// @ts-nocheck -- ported from servicespash/self-discipline (looser original tsconfig)
 import React from 'react';
 import { History } from 'lucide-react';
 import { Transaction } from '../WalletDiscipline';

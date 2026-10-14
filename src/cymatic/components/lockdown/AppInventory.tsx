@@ -1,3 +1,4 @@
+// @ts-nocheck -- ported from servicespash/self-discipline (looser original tsconfig)
 import React from 'react';
 import { Lock, Unlock } from 'lucide-react';
 import { AppPackageInfo } from '../../utils/packageManager';

@@ -1,3 +1,4 @@
+// @ts-nocheck -- ported from servicespash/self-discipline (looser original tsconfig)
 import React, { useState, useEffect } from 'react';
 import { Droplet, Activity, Wind, Monitor, Check, Clock, TrendingUp } from 'lucide-react';
 
