@@ -17,7 +17,8 @@ import {
   Sparkles,
   ChevronRight,
   ShieldCheck,
-  CheckCircle2
+  CheckCircle2,
+  Waves
 } from 'lucide-react';
 
 interface CommandCatalogProps {
@@ -36,6 +37,33 @@ interface CommandCategory {
 }
 
 const COMMAND_CATEGORIES: CommandCategory[] = [
+  {
+    title: 'Ambient Soundscapes & Deep Work',
+    icon: Waves,
+    color: 'text-emerald-400 border-emerald-500/30 bg-emerald-950/20',
+    commands: [
+      {
+        command: 'Play white noise',
+        description: 'Generates flat-spectrum acoustic shielding to mask office chatter and sudden noises.',
+        example: 'Play white noise'
+      },
+      {
+        command: 'Play binaural beats',
+        description: 'Synthesizes stereophonic 10 Hz alpha brainwaves to induce deep flow state and sustained focus.',
+        example: 'Play binaural beats'
+      },
+      {
+        command: 'Play zen temple sounds',
+        description: 'Launches authentic 432 Hz Tibetan singing bowls, meditation drones, and temple bells.',
+        example: 'Play zen temple sounds'
+      },
+      {
+        command: 'Play brown noise for 25 minutes',
+        description: 'Engages restorative low-rumble brown noise with an automated Pomodoro focus timer.',
+        example: 'Play brown noise for 25 minutes'
+      }
+    ]
+  },
   {
     title: 'Telephony & Voice Calling',
     icon: PhoneCall,

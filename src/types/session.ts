@@ -19,7 +19,7 @@ export interface SessionContextType {
   user: User | null;
   uid: string | null;
   loading: boolean;
-  signIn: (email: string, moniker?: string, role?: string) => Promise<void> | void;
+  signIn: (email: string, moniker?: string, role?: string, password?: string) => Promise<void> | void;
   signOut: () => Promise<void> | void;
   setOnboardingComplete: (completed: boolean) => void;
   updateProfile: (updates: Partial<LocalUserSession>) => Promise<void> | void;

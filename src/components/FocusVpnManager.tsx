@@ -8,6 +8,7 @@
 import React, { useState, useEffect } from 'react';
 import { DisciplineBridge, SystemLockdownPayload } from '../DisciplineBridge';
 import { PackageManager, AppPackageInfo } from '../utils/packageManager';
+import { governanceService } from '../utils/governanceService';
 import { Shield, ShieldAlert, Lock, Smartphone, Wifi, WifiOff, Check, Cpu, AlertTriangle, Key } from 'lucide-react';
 
 interface InstalledApp {
@@ -87,14 +88,16 @@ export default function FocusVpnManager() {
     setIsLocked(true);
   };
 
-  const handleSupervisorUnlock = () => {
-    if (supervisorCode === 'CYMATIC777' || supervisorCode === '1234') {
+  const handleSupervisorUnlock = async () => {
+    // Fetch contract to get PIN
+    const contract = await governanceService.getActiveContract();
+    if (contract && supervisorCode === contract.supervisor_pin) {
       DisciplineBridge.terminateLockdown();
       setIsLocked(false);
       setSupervisorCode('');
       setPinError(null);
     } else {
-      setPinError('Invalid Supervisor Passcode. Default: 1234 or CYMATIC777');
+      setPinError('Invalid Supervisor Passcode.');
       setTimeout(() => setPinError(null), 4000);
     }
   };

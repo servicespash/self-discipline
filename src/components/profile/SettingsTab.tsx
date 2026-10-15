@@ -1,5 +1,5 @@
 import React from 'react';
-import { Settings, RefreshCw } from 'lucide-react';
+import { Settings, RefreshCw, Cpu, Radio } from 'lucide-react';
 
 interface SettingsTabProps {
   onForceSync: () => void;
@@ -23,6 +23,22 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ onForceSync }) => (
         <span className="text-gray-400">Row-Level Security:</span>
         <span className="text-emerald-400 font-bold">Enforced</span>
       </div>
+    </div>
+
+    <div className="p-4 bg-gray-950 rounded-2xl border border-cyan-500/30 space-y-2.5">
+      <h3 className="text-xs font-black uppercase tracking-wider text-white flex items-center gap-2">
+        <Cpu size={14} className="text-cyan-400" /> Device Digital Assistant & Wake Words
+      </h3>
+      <p className="text-[11px] text-gray-400 leading-relaxed">
+        Set Rama as your Android / System Default Assistant to enable background voice invocation ("Hey Rama") when the app is closed.
+      </p>
+      <button 
+        type="button"
+        onClick={() => window.dispatchEvent(new CustomEvent('cymatic-open-device-assistant'))}
+        className="w-full py-2.5 bg-gradient-to-r from-cyan-950/60 to-emerald-950/60 hover:from-cyan-950/80 hover:to-emerald-950/80 text-cyan-300 border border-cyan-500/40 rounded-xl text-xs font-bold uppercase flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm"
+      >
+        <Radio size={14} className="animate-pulse" /> Configure Device Assistant
+      </button>
     </div>
 
     <div className="p-4 bg-gray-950 rounded-2xl border border-gray-800 space-y-2">

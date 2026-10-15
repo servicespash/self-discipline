@@ -62,7 +62,7 @@ export default function LockdownProtocols() {
   const [duration, setDuration] = useState<number>(30);
   const [customDuration, setCustomDuration] = useState<string>('');
   const [activeProfile, setActiveProfile] = useState<string>('social');
-  const [allowedEmergencyApp, setAllowedEmergencyApp] = useState<string | null>('com.whatsapp');
+  const [allowedEmergencyApp, setAllowedEmergencyApp] = useState<string | null>(null);
   const [blockedPackages, setBlockedPackages] = useState<string[]>(() => PackageManager.getBlockedPackages());
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -108,7 +108,7 @@ export default function LockdownProtocols() {
     const mins = customDuration ? parseInt(customDuration, 10) || duration : duration;
     const packagesToBlock = blockedPackages.length > 0 
       ? blockedPackages.join(',') 
-      : 'com.whatsapp,com.instagram.android,com.zhiliaoapp.musically,com.twitter.android';
+      : (PackageManager.getUserConfiguredApps().map(a => a.packageName).join(',') || '');
 
     await DisciplineBridge.initiateLockdown(
       mins,
@@ -311,8 +311,9 @@ export default function LockdownProtocols() {
             <div className="flex flex-wrap items-center gap-2 pt-1">
               {[
                 { id: null, label: 'Strict Lockdown (No Exceptions)' },
-                { id: 'com.whatsapp', label: 'WhatsApp Only' },
-                { id: 'com.google.android.dialer', label: 'Phone Dialer Only' }
+                ...PackageManager.getUserConfiguredApps()
+                  .filter(a => a.category === 'messaging' || a.category === 'system')
+                  .map(a => ({ id: a.packageName, label: `${a.appName} Only` }))
               ].map(opt => (
                 <button
                   key={String(opt.id)}

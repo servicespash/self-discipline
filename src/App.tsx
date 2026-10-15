@@ -11,9 +11,13 @@ import Dashboard from './components/Dashboard';
 import LockdownOverlay from './components/LockdownOverlay';
 import RamaFloatingHub from './components/RamaFloatingHub';
 import { InAppMediaPlayer } from './components/media/InAppMediaPlayer';
+import VoiceCommandsModal from './components/VoiceCommandsModal';
+import DeviceAssistantModal from './components/DeviceAssistantModal';
 import LegalTrustModal, { LegalTabType } from './components/LegalTrustModal';
 import { DisciplineBridge, SystemLockdownPayload } from './DisciplineBridge';
 import { SpiritualNotifications } from './utils/spiritualNotificationService';
+import { SyncManager } from './utils/syncManager';
+import { AuthInterceptor, SharedLinkPayload } from './utils/authInterceptor';
 import { RamaVoice } from './utils/ramaVoiceService';
 import { Shield, ShieldAlert, ShieldCheck, Cpu, LogOut, Terminal, BotMessageSquare, ExternalLink, Award, Sparkles, Share2 } from 'lucide-react';
 import { OnboardingPermissions } from './components/OnboardingPermissions';
@@ -33,8 +37,24 @@ const AppContent: React.FC = () => {
   const [lockdownState, setLockdownState] = useState<SystemLockdownPayload>(() => DisciplineBridge.getState());
   const [bridgeReady, setBridgeReady] = useState(false);
   const [isHubVisible, setIsHubVisible] = useState(true);
+  const [isVoiceCommandsOpen, setIsVoiceCommandsOpen] = useState(false);
+  const [isAssistantModalOpen, setIsAssistantModalOpen] = useState(false);
   const [legalModalTab, setLegalModalTab] = useState<LegalTabType | null>(null);
   const [referralInvite, setReferralInvite] = useState<ReferralResolution | null>(null);
+  const [sharedLinkPayload, setSharedLinkPayload] = useState<SharedLinkPayload | null>(() => AuthInterceptor.interceptUrl());
+
+  useEffect(() => {
+    const handleOpenCommands = () => setIsVoiceCommandsOpen(true);
+    const handleOpenAssistant = () => setIsAssistantModalOpen(true);
+
+    window.addEventListener('cymatic-open-voice-commands', handleOpenCommands);
+    window.addEventListener('cymatic-open-device-assistant', handleOpenAssistant);
+
+    return () => {
+      window.removeEventListener('cymatic-open-voice-commands', handleOpenCommands);
+      window.removeEventListener('cymatic-open-device-assistant', handleOpenAssistant);
+    };
+  }, []);
 
   // Deep linking & App-launch shortcut event interception wrapped in useCallback
   const handleLaunchUrl = useCallback((urlStr: string) => {
@@ -81,14 +101,18 @@ const AppContent: React.FC = () => {
     });
 
     SpiritualNotifications.init();
+    SyncManager.initialize();
 
     // Initialize Native System Permissions
     DisciplineBridge.checkPermissions().then(() => {
       setBridgeReady(true);
     });
 
-    // Auto-start continuous background listening for wake words
-    RamaVoice.startContinuousListening();
+    // Only start continuous background listening if user explicitly enabled it
+    const isBgActive = localStorage.getItem('cymatic_rama_bg_assistant_active') === 'true';
+    if (isBgActive) {
+      RamaVoice.startContinuousListening();
+    }
 
     const handleWakeWordEvent = () => setIsHubVisible(true);
     const unsubWakeWord = RamaVoice.onWakeWord(() => {
@@ -127,10 +151,10 @@ const AppContent: React.FC = () => {
     };
   }, [handleLaunchUrl, checkReferral]);
 
-  const handleSignInSubmit = (e: React.FormEvent) => {
+  const handleSignInSubmit = (e: React.FormEvent, password?: string) => {
     e.preventDefault();
     if (!inputEmail.trim()) return;
-    signIn(inputEmail, inputMoniker || 'Discipline Champion', 'User');
+    signIn(inputEmail, inputMoniker || 'Discipline Champion', 'User', password);
   };
 
   if (loading || !bridgeReady) {
@@ -160,6 +184,7 @@ const AppContent: React.FC = () => {
         inputMoniker={inputMoniker}
         setInputMoniker={setInputMoniker}
         referralInvite={referralInvite}
+        sharedLinkPayload={sharedLinkPayload}
         handleSignInSubmit={handleSignInSubmit}
         setLegalModalTab={setLegalModalTab}
       />
@@ -196,8 +221,25 @@ const AppContent: React.FC = () => {
         </button>
       )}
 
-      {/* Global In-App Embedded Media Player (Spotify, YouTube Music, Deezer, Local Audio) */}
+      {/* Global In-App Embedded Media Player (Ambient Soundscapes & Universal Audio) */}
       <InAppMediaPlayer />
+
+      {/* Available Voice Commands Modal & Slide-Over */}
+      <VoiceCommandsModal
+        isOpen={isVoiceCommandsOpen}
+        onClose={() => setIsVoiceCommandsOpen(false)}
+        onExecuteCommand={(cmd) => {
+          setIsHubVisible(true);
+          RamaVoice.triggerCommand(cmd);
+        }}
+      />
+
+      {/* Device Assistant & System Wake Word Configuration Modal */}
+      <DeviceAssistantModal
+        isOpen={isAssistantModalOpen}
+        onClose={() => setIsAssistantModalOpen(false)}
+        onOpenVoiceCommands={() => setIsVoiceCommandsOpen(true)}
+      />
 
       {/* Global Legal & Trust Modal Dialog for Logged-In Sessions */}
       {legalModalTab && (

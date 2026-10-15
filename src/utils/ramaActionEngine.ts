@@ -49,6 +49,47 @@ export const RamaActionEngine = {
   async parseAndExecute(input: string): Promise<RamaActionResult | null> {
     const text = input.toLowerCase().trim();
 
+    // 0. Voice Commands Guide & Wake Words Discovery
+    if (
+      text.includes('voice command') ||
+      text.includes('wake word') ||
+      text.includes('show commands') ||
+      text.includes('list commands') ||
+      text.includes('available commands') ||
+      text.includes('what can you do') ||
+      text.includes('what can i say')
+    ) {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('cymatic-open-voice-commands'));
+      }
+      return {
+        success: true,
+        actionType: 'NAVIGATE_DISPLAY',
+        title: 'Available Voice Commands',
+        summary: 'Opening the Available Voice Commands and Wake Words guide for Rama AI.'
+      };
+    }
+
+    // 0b. Device Assistant Setup & Background Hotword Configuration
+    if (
+      text.includes('device assistant') ||
+      text.includes('system assistant') ||
+      text.includes('set assistant') ||
+      text.includes('default assistant') ||
+      text.includes('background wake') ||
+      text.includes('wake when closed')
+    ) {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('cymatic-open-device-assistant'));
+      }
+      return {
+        success: true,
+        actionType: 'NAVIGATE_DISPLAY',
+        title: 'Device Assistant Configuration',
+        summary: 'Opening the Device Assistant & Background Wake Word setup panel.'
+      };
+    }
+
     // 1. Email Composition & Dispatch Action
     if (text.startsWith('email ') || text.includes('send email') || text.includes('write email') || text.includes('draft email')) {
       const emailResult = this.handleEmailAction(input);
@@ -67,8 +108,21 @@ export const RamaActionEngine = {
       if (callResult) return callResult;
     }
 
-    // 4. In-App Embedded Media / Song Playback (YouTube, Spotify, Deezer, Local)
-    if (text.startsWith('play ') || text.startsWith('listen to ') || text.includes('play song') || text.includes('play music') || text.includes('play on spotify') || text.includes('play on youtube')) {
+    // 4. In-App Embedded Media & Ambient Soundscapes Playback
+    if (
+      text.startsWith('play ') ||
+      text.startsWith('listen to ') ||
+      text.includes('white noise') ||
+      text.includes('binaural') ||
+      text.includes('zen temple') ||
+      text.includes('singing bowl') ||
+      text.includes('temple bell') ||
+      text.includes('soundscape') ||
+      text.includes('play song') ||
+      text.includes('play music') ||
+      text.includes('play on spotify') ||
+      text.includes('play on youtube')
+    ) {
       const playResult = this.handlePlaySongAction(input);
       if (playResult) return playResult;
     }
@@ -150,12 +204,16 @@ export const RamaActionEngine = {
     // Play in-app via InAppMediaService
     InAppMediaService.playTrack(trackTitle, platform);
 
+    const isAmbient = text.includes('white noise') || text.includes('binaural') || text.includes('zen') || text.includes('soundscape') || text.includes('temple') || text.includes('pink noise') || text.includes('brown noise');
+
     return {
       success: true,
       actionType: 'PLAY_SONG',
-      title: `In-App Audio: ${trackTitle}`,
-      summary: `Streaming "${trackTitle}" via embedded ${platform.toUpperCase()} player directly within Cymatic OS without external apps.`,
-      data: { query: trackTitle, platform }
+      title: isAmbient ? `Ambient Soundscape: ${trackTitle}` : `In-App Audio: ${trackTitle}`,
+      summary: isAmbient
+        ? `Synthesizing "${trackTitle}" offline ambient soundscape for deep work focus session.`
+        : `Streaming "${trackTitle}" via embedded ${platform.toUpperCase()} player directly within Cymatic OS without external apps.`,
+      data: { query: trackTitle, platform: isAmbient ? 'focus_ambient' : platform }
     };
   },
 
@@ -450,7 +508,9 @@ export const RamaActionEngine = {
     const match = text.match(/(\d+)\s*(?:min|minutes|m)/);
     const minutes = match ? parseInt(match[1], 10) : 30;
 
-    DisciplineBridge.initiateLockdown(minutes, 'com.whatsapp,com.instagram.android,com.tiktok,com.youtube');
+    const blocked = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('sdc_blocked_packages_v1') || '[]') : [];
+    const packages = blocked.length > 0 ? blocked.join(',') : '';
+    DisciplineBridge.initiateLockdown(minutes, packages);
 
     return {
       success: true,
@@ -489,11 +549,15 @@ export const RamaActionEngine = {
    */
   navigateDisplay(route: string, label: string): RamaActionResult {
     window.location.hash = `#${route}`;
+    // Explicitly notify the hub to close when navigating to a specific route
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('cymatic-close-hub'));
+    }
     return {
       success: true,
       actionType: 'NAVIGATE_DISPLAY',
       title: `Display Opened: ${label}`,
-      summary: `Viewport successfully switched to ${label} (${route}).`,
+      summary: `Viewport successfully switched to ${label} (${route}). Hub closed for clarity.`,
       data: { route }
     };
   }

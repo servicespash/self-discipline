@@ -1,23 +1,24 @@
-# Implementation Plan: Codebase Audit & Refactoring
+# Implementation Plan - Rama AI Gemini UI & Modular OS Upgrade
 
-## Overview
-To address structural weaknesses, UI/UX inconsistency, and code bloat, this plan outlines a systematic approach to unify the design and implement robust role/tier-aware access across the entire Cymatic OS platform.
+## 1. Objectives & UI/UX Architecture
+- **Gemini-Style Layout**: Transform Rama Floating Hub into a polished, minimalist executive assistant interface featuring:
+  - Slide-out sidebar menu with recent chats, categories, and system shortcuts.
+  - Center prompt screen with greeting, dynamic suggestion pills, and clean typography.
+  - Fixed bottom input bar with voice/mic input, image/attachment button, and intelligent command dispatching.
+- **Reactive Component & Intent Integration**: Seamlessly render dynamic cards (contact lists, media player controls, contract previews) inline within the chat stream using `RamaComponentRegistry` and `RamaIntentRegistry`.
+- **Background Execution & Telephony/Messaging Bridge**: Ensure all telephony, WhatsApp/SMS messaging, soundscapes, and lockdown PIN generators execute silently in the background with zero UI clutter.
 
-## Phase 1: Audit and Foundation (Centralization)
-- **Design System Initialization:** Define a core design system (`src/components/ui/`) to replace ad-hoc styling. This will centralize typography, spacing, colors, and common layout patterns (containers, buttons, modals).
-- **CSS Consolidation:** Refactor `src/index.css` to act as the single source of truth for global styles and Tailwind theme extensions.
-- **Layout Wrapper:** Create a standardized `Layout` component that ensures consistent padding, responsiveness, and container behavior across all dashboard modules.
+## 2. Proposed Changes
 
-## Phase 2: Refactoring & Bloat Reduction
-- **Component Audit:** Iterate through all components in `src/components/`, focusing on identifying and removing duplicated logic and redundant UI wrappers.
-- **Unified Navigation:** Refactor `Dashboard.tsx` and the side navigation to leverage a centralized configuration that enforces role-based visibility, reducing hardcoding and improving maintainability.
-- **State & Logic Sharing:** Extract shared logic (hooks) from individual components into `src/hooks/` to eliminate repetition and ensure consistent data handling (e.g., Supabase interactions).
+### A. Rama Floating Hub UI Overhaul (`src/components/RamaFloatingHub.tsx`)
+- Implement Gemini-inspired drawer/sidebar for chat history and categories.
+- Build gorgeous center greeting / prompt screen with rotating/dynamic suggestion pills.
+- Refactor chat input bar to match the native Gemini floating input bar with voice & action triggers.
+- Support expandable inline cards for contact selection, media streaming, and contract summaries.
 
-## Phase 3: Role & Tier Awareness
-- **Context Integration:** Utilize `SessionContext` to build higher-order components (HOCs) or hooks (`useAccessControl`) to enforce role-based UI rendering globally.
-- **Tier-Driven UI:** Implement conditional rendering based on subscription tier status, ensuring seamless integration of premium features while maintaining a professional experience for all users.
-- **Authentication & Database Sync:** Ensure all role/tier enforcement is backed by server-side logic (Supabase RLS) to prevent unauthorized access.
+### B. Styling & Design Token Polish (`src/index.css` / Tailwind)
+- Ensure sleek dark theme aesthetics, zero-pill discipline (except prompt suggestions), custom scrollbars, and smooth slide transitions.
 
-## Phase 4: Verification
-- **Build & Lint:** Rigorous linting and build verification after each major component refactor to ensure no regressions.
-- **Responsiveness Test:** Verify container behaviors across mobile, tablet, and desktop viewports to ensure "absolutely wide" adherence.
+## 3. Verification Plan
+- Compile applet with `compile_applet`.
+- Verify linting with `lint_applet`.

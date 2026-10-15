@@ -2,8 +2,11 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  * Decoupled Rama AI Voice & Wake-Word Service Engine
- * Debounces speech recognition lifecycle to prevent rapid mic flickering.
+ * Anti-Flicker Architecture: Eliminates rapid mic indicator toggling and silence restart loops.
+ * Respects user activation, handles ambient noise cleanly, and prevents unprompted background mic restarts.
  */
+
+import { DisciplineBridge } from '../DisciplineBridge';
 
 export interface RamaVoiceState {
   isListening: boolean;
@@ -11,6 +14,7 @@ export interface RamaVoiceState {
   transcript: string;
   wakeWordDetected: boolean;
   micSensitivity: number; // 0.0 to 1.0 VAD threshold
+  statusText?: string;
 }
 
 class RamaVoiceEngine {
@@ -18,7 +22,9 @@ class RamaVoiceEngine {
   private isListening: boolean = false;
   private isSpeaking: boolean = false;
   private isRestarting: boolean = false;
+  private shouldBeListening: boolean = false;
   private restartTimer: any = null;
+  private consecutiveErrors: number = 0;
   private transcript: string = '';
   private stateListeners: Set<(state: RamaVoiceState) => void> = new Set();
   private commandListeners: Set<(command: string) => void> = new Set();
@@ -39,96 +45,159 @@ class RamaVoiceEngine {
       return;
     }
 
-    this.recognition = new SpeechRecognition();
-    this.recognition.continuous = true;
-    this.recognition.interimResults = true;
-    this.recognition.lang = 'en-US';
+    try {
+      this.recognition = new SpeechRecognition();
+      this.recognition.continuous = true;
+      this.recognition.interimResults = true;
+      this.recognition.lang = 'en-US';
 
-    this.recognition.onstart = () => {
-      this.isListening = true;
-      this.isRestarting = false;
-      this.notifyState();
-    };
+      this.recognition.onstart = () => {
+        this.isListening = true;
+        this.isRestarting = false;
+        this.consecutiveErrors = 0;
+        this.notifyState();
+      };
+      
+      // Removed automatic recognition.start() here if it existed, 
+      // ensuring control is only via startListening()
 
-    this.recognition.onresult = (event: any) => {
-      let interimTranscript = '';
-      let finalTranscript = '';
 
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const text = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
-          finalTranscript += text;
-        } else {
-          interimTranscript += text;
-        }
-      }
+      this.recognition.onresult = (event: any) => {
+        let interimTranscript = '';
+        let finalTranscript = '';
 
-      const fullText = (finalTranscript || interimTranscript).trim();
-      this.transcript = fullText;
-      this.notifyState();
-
-      // Check Wake Word Detection
-      const lower = fullText.toLowerCase();
-      for (const kw of this.wakeWords) {
-        if (lower.includes(kw)) {
-          this.notifyWakeWord(kw);
-          const cleanCommand = lower.replace(kw, '').trim();
-          if (cleanCommand.length > 2) {
-            this.notifyCommand(cleanCommand);
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const text = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += text;
+          } else {
+            interimTranscript += text;
           }
-          break;
         }
-      }
-    };
 
-    this.recognition.onerror = (event: any) => {
-      if (event.error === 'no-speech' || event.error === 'aborted') {
-        // Normal silence timeouts—do NOT destroy session immediately
-        return;
-      }
-      console.warn('[RamaVoice] Speech recognition error:', event.error);
-      this.handleAutoRestart();
-    };
+        const fullText = (finalTranscript || interimTranscript).trim();
+        if (fullText) {
+          this.transcript = fullText;
+          this.notifyState();
 
-    this.recognition.onend = () => {
-      this.isListening = false;
-      this.notifyState();
-      if (this.shouldBeListening) {
-        this.handleAutoRestart();
-      }
-    };
+          // Check Wake Word Detection
+          const lower = fullText.toLowerCase();
+          for (const kw of this.wakeWords) {
+            if (lower.includes(kw)) {
+              this.notifyWakeWord(kw);
+              const cleanCommand = lower.replace(kw, '').trim();
+              if (cleanCommand.length > 2) {
+                this.notifyCommand(cleanCommand);
+              }
+              break;
+            }
+          }
+        }
+      };
+
+      this.recognition.onerror = (event: any) => {
+        const err = event.error;
+        if (err === 'no-speech') {
+          // Normal environmental silence - do not treat as fatal or force aggressive restart
+          return;
+        }
+
+        if (err === 'aborted') {
+          // Deliberate abort / user action
+          return;
+        }
+
+        console.warn('[RamaVoice] Speech recognition notice:', err);
+        this.consecutiveErrors++;
+
+        // Back off if multiple errors occur (e.g. mic permission denied, audio capture issue)
+        if (this.consecutiveErrors > 3) {
+          console.warn('[RamaVoice] Pausing voice restart due to repeated capture errors.');
+          this.shouldBeListening = false;
+          this.isListening = false;
+          this.isRestarting = false;
+          this.notifyState();
+        }
+      };
+
+      this.recognition.onend = () => {
+        // If user intentionally stopped listening, turn off cleanly
+        if (!this.shouldBeListening) {
+          this.isListening = false;
+          this.isRestarting = false;
+          clearTimeout(this.restartTimer);
+          this.notifyState();
+          return;
+        }
+
+        // If continuous mode is enabled, keep listening state active in UI to prevent flickering
+        // and restart with a calm, debounced backoff
+        this.scheduleCalmRestart();
+      };
+    } catch (err) {
+      console.warn('[RamaVoice] Speech recognition initialization notice:', err);
+    }
   }
 
-  private shouldBeListening: boolean = false;
-
-  private handleAutoRestart() {
+  private scheduleCalmRestart() {
+    if (!this.shouldBeListening) return;
     if (this.isRestarting) return;
+
     this.isRestarting = true;
-    this.notifyState();
     clearTimeout(this.restartTimer);
 
-    // Debounce restart by 800ms to eliminate mic indicator flickering
+    // Calm 3000ms debounce: eliminates rapid mic on/off flickering caused by browser silence timeouts
+    const delay = Math.min(3000 + this.consecutiveErrors * 500, 5000);
+
     this.restartTimer = setTimeout(() => {
-      if (this.shouldBeListening && this.recognition) {
+      // Robust check: ensure we really should be listening AND the recognition isn't already active
+      if (this.shouldBeListening && this.recognition && !this.isListening) {
         try {
           this.recognition.start();
-        } catch (e) {
-          // Safe catch if already started
+        } catch (e: any) {
+          // If already started or browser in transition, safe catch
+          if (e.name !== 'InvalidStateError') {
+            this.consecutiveErrors++;
+          }
         }
       }
       this.isRestarting = false;
-      this.notifyState();
-    }, 800);
+    }, delay);
   }
 
-  public startListening() {
+  public async startListening() {
+    // Check with bridge middleware if mic is allowed
+    if (!DisciplineBridge.isMicrophoneAllowed()) {
+      console.warn('[RamaVoice] Microphone access blocked by DisciplineBridge');
+      return;
+    }
+
+    // Audit: Check hardware permission status before activating audio context
+    if (typeof navigator !== 'undefined' && navigator.mediaDevices) {
+      try {
+        await navigator.mediaDevices.getUserMedia({ audio: true });
+        DisciplineBridge.setMicrophoneActive(true);
+      } catch (e) {
+        console.warn('[RamaVoice] Hardware microphone access denied:', e);
+        return;
+      }
+    }
+
     this.shouldBeListening = true;
+    this.consecutiveErrors = 0;
+    clearTimeout(this.restartTimer);
+
     if (this.recognition && !this.isListening) {
       try {
         this.recognition.start();
-      } catch (e) {
-        // Safe catch
+      } catch (e: any) {
+        if (e.name !== 'InvalidStateError') {
+          console.warn('[RamaVoice] Start listening notice:', e.message);
+        }
       }
+    } else {
+      this.isListening = true;
+      this.notifyState();
     }
   }
 
@@ -136,9 +205,18 @@ class RamaVoiceEngine {
     this.startListening();
   }
 
+  public stopContinuousListening() {
+    this.stopListening();
+  }
+
   public stopListening() {
     this.shouldBeListening = false;
     this.isListening = false;
+    this.isRestarting = false;
+    this.consecutiveErrors = 0;
+    clearTimeout(this.restartTimer);
+    DisciplineBridge.setMicrophoneActive(false);
+
     if (this.recognition) {
       try {
         this.recognition.stop();
@@ -150,7 +228,7 @@ class RamaVoiceEngine {
   }
 
   public toggleListening() {
-    if (this.isListening) {
+    if (this.isListening || this.shouldBeListening) {
       this.stopListening();
     } else {
       this.startListening();
@@ -175,16 +253,23 @@ class RamaVoiceEngine {
       this.notifyState();
     };
 
+    utterance.onerror = () => {
+      this.isSpeaking = false;
+      this.notifyState();
+    };
+
     window.speechSynthesis.speak(utterance);
   }
 
   public getState(): RamaVoiceState {
     return {
-      isListening: this.isListening || this.isRestarting,
+      // Correctly reflect both intentional and automatic listening status
+      isListening: this.isListening,
       isSpeaking: this.isSpeaking,
       transcript: this.transcript,
       wakeWordDetected: false,
-      micSensitivity: 0.8
+      micSensitivity: 0.8,
+      statusText: this.isListening ? 'Listening' : (this.shouldBeListening ? 'Monitoring (Standby)' : 'Standby')
     };
   }
 
@@ -222,11 +307,10 @@ class RamaVoiceEngine {
   private notifyWakeWord(kw: string) {
     this.wakeWordListeners.forEach(fn => fn(kw));
   }
+
+  public triggerCommand(cmd: string) {
+    this.notifyCommand(cmd);
+  }
 }
 
 export const RamaVoice = new RamaVoiceEngine();
-
-// Compatibility alias for system callers
-(RamaVoice as any).startContinuousListening = function() {
-  this.startListening();
-};

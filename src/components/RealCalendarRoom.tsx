@@ -22,6 +22,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { DisciplineBridge } from '../DisciplineBridge';
+import { PackageManager } from '../utils/packageManager';
 import { GoogleServiceBridge, GoogleEvent } from '../utils/GoogleServiceBridge';
 
 export interface CalendarRoomEvent {
@@ -260,7 +261,9 @@ export default function RealCalendarRoom({ accessToken }: { accessToken: string 
 
   const handleInstantLockdownForEvent = (event: CalendarRoomEvent) => {
     const duration = formDurationMins || 30;
-    DisciplineBridge.initiateLockdown(duration, 'com.whatsapp,com.instagram.android,com.zhiliaoapp.musically');
+    const blocked = PackageManager.getBlockedPackages();
+    const packages = blocked.length > 0 ? blocked.join(',') : (PackageManager.getUserConfiguredApps().map(a => a.packageName).join(',') || '');
+    DisciplineBridge.initiateLockdown(duration, packages);
   };
 
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;

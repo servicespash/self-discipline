@@ -81,6 +81,10 @@ export default function TaskWidget({ accessToken }: { accessToken?: string | nul
     };
 
     fetchTasks();
+
+    const handleRefresh = () => fetchTasks();
+    window.addEventListener('cymatic-tasks-refresh', handleRefresh);
+    return () => window.removeEventListener('cymatic-tasks-refresh', handleRefresh);
   }, [uid, todayStr]);
 
   useEffect(() => {
@@ -183,7 +187,9 @@ export default function TaskWidget({ accessToken }: { accessToken?: string | nul
 
     setNewTaskTitle('');
     if (newTaskRule && newTaskDate === todayStr) {
-      DisciplineBridge.initiateLockdown(30, 'com.whatsapp,com.instagram.android');
+      const blocked = JSON.parse(localStorage.getItem('sdc_blocked_packages_v1') || '[]');
+      const packages = blocked.length > 0 ? blocked.join(',') : '';
+      DisciplineBridge.initiateLockdown(30, packages);
     }
   };
 

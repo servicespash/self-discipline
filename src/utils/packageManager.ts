@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  * Dynamic Package Manager - Real-time system and installed application authority engine
  * Connects directly to native Android Capacitor bridge or persisted device package authority registry.
+ * Zero hardcoded third-party social apps: dynamically queries system installed applications.
  */
 
 import { supabase } from './supabase';
@@ -21,102 +22,38 @@ export interface AppPackageInfo {
 const CONFIGURED_APPS_KEY = 'sdc_user_configured_apps_v1';
 const BLOCKED_PACKAGES_KEY = 'sdc_blocked_packages_v1';
 
-// Real baseline Android package identities (not simulations, real production package identifiers)
+// Universal neutral core device utilities (standard across Android/Linux OS, not third-party commercial apps)
 export const BASELINE_REAL_PACKAGES: AppPackageInfo[] = [
   {
-    packageName: 'com.whatsapp',
-    appName: 'WhatsApp',
-    category: 'messaging',
-    isSystemApp: false,
-    versionName: '2.24.8',
-    permissions: ['INTERNET', 'CAMERA', 'RECORD_AUDIO']
-  },
-  {
-    packageName: 'com.instagram.android',
-    appName: 'Instagram',
-    category: 'social',
-    isSystemApp: false,
-    versionName: '320.0.0',
-    permissions: ['INTERNET', 'CAMERA', 'READ_MEDIA_IMAGES']
-  },
-  {
-    packageName: 'com.zhiliaoapp.musically',
-    appName: 'TikTok',
-    category: 'social',
-    isSystemApp: false,
-    versionName: '33.5.3',
-    permissions: ['INTERNET', 'CAMERA', 'RECORD_AUDIO']
-  },
-  {
-    packageName: 'com.twitter.android',
-    appName: 'X / Twitter',
-    category: 'social',
-    isSystemApp: false,
-    versionName: '10.35.0',
-    permissions: ['INTERNET']
-  },
-  {
-    packageName: 'com.google.android.youtube',
-    appName: 'YouTube',
-    category: 'entertainment',
-    isSystemApp: false,
-    versionName: '19.12.35',
-    permissions: ['INTERNET', 'WAKE_LOCK']
-  },
-  {
-    packageName: 'com.facebook.katana',
-    appName: 'Facebook',
-    category: 'social',
-    isSystemApp: false,
-    versionName: '456.0.0',
-    permissions: ['INTERNET', 'ACCESS_FINE_LOCATION']
-  },
-  {
-    packageName: 'com.snapchat.android',
-    appName: 'Snapchat',
-    category: 'social',
-    isSystemApp: false,
-    versionName: '12.78.0',
-    permissions: ['INTERNET', 'CAMERA', 'RECORD_AUDIO']
-  },
-  {
-    packageName: 'com.reddit.frontpage',
-    appName: 'Reddit',
-    category: 'social',
-    isSystemApp: false,
-    versionName: '2024.12.0',
-    permissions: ['INTERNET']
-  },
-  {
     packageName: 'com.android.chrome',
-    appName: 'Google Chrome',
+    appName: 'Web Browser',
     category: 'system',
     isSystemApp: true,
-    versionName: '124.0.6367',
-    permissions: ['INTERNET', 'READ_EXTERNAL_STORAGE']
-  },
-  {
-    packageName: 'com.google.android.dialer',
-    appName: 'Phone / Dialer',
-    category: 'system',
-    isSystemApp: true,
-    versionName: '127.0.0',
-    permissions: ['CALL_PHONE', 'READ_CONTACTS']
+    versionName: 'System',
+    permissions: ['INTERNET']
   },
   {
     packageName: 'com.android.settings',
     appName: 'System Settings',
     category: 'system',
     isSystemApp: true,
-    versionName: '14.0.0',
+    versionName: 'System',
     permissions: ['WRITE_SETTINGS']
+  },
+  {
+    packageName: 'com.google.android.dialer',
+    appName: 'Phone / Communications',
+    category: 'system',
+    isSystemApp: true,
+    versionName: 'System',
+    permissions: ['CALL_PHONE']
   }
 ];
 
 export class PackageManager {
   /**
-   * Fetch applications from native Capacitor DisciplineNative plugin on Android device.
-   * If not on native device, returns persistent package authority registry.
+   * Fetch applications dynamically from native Capacitor DisciplineNative plugin on Android device.
+   * If not on native device, returns user's configured package registry without hardcoded assumptions.
    */
   public static async fetchAllApps(): Promise<AppPackageInfo[]> {
     // 1. Check native Android Capacitor DisciplineNative plugin
@@ -125,21 +62,56 @@ export class PackageManager {
         const nativeResult = await window.Capacitor.Plugins.DisciplineNative.fetchInstalledApps();
         const parsed = typeof nativeResult === 'string' ? JSON.parse(nativeResult) : nativeResult;
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.map((app: any) => ({
-            packageName: app.packageName || app.id,
-            appName: app.name || app.appName || (app.packageName || '').split('.').pop() || 'App',
+          const mapped: AppPackageInfo[] = parsed.map((app: any) => ({
+            packageName: app.packageName || app.id || `app.${(app.name || 'custom').toLowerCase().replace(/\s+/g, '_')}`,
+            appName: app.name || app.appName || (app.packageName || '').split('.').pop() || 'Installed App',
             category: app.isSystem ? 'system' : (app.category || 'installed'),
             isSystemApp: Boolean(app.isSystem),
             versionName: app.versionName || '1.0.0',
             permissions: app.permissions || []
           }));
+          
+          // Cache discovered apps locally
+          this.saveUserConfiguredApps(mapped);
+          return mapped;
         }
       } catch (err) {
         console.warn('[PackageManager] Native device bridge fetch:', err);
       }
     }
 
-    // 2. Load configured package registry from persistent storage
+    // 2. Query PWA or web installed app hints if supported
+    if (typeof window !== 'undefined' && 'getInstalledRelatedApps' in navigator) {
+      try {
+        const relatedApps = await (navigator as any).getInstalledRelatedApps();
+        if (Array.isArray(relatedApps) && relatedApps.length > 0) {
+          const current = this.getUserConfiguredApps();
+          const existingIds = new Set(current.map(a => a.packageName));
+          const newApps: AppPackageInfo[] = [];
+          for (const rel of relatedApps) {
+            const id = rel.id || rel.url || rel.platform;
+            if (id && !existingIds.has(id)) {
+              newApps.push({
+                packageName: id,
+                appName: rel.name || id,
+                category: 'installed',
+                isSystemApp: false,
+                versionName: rel.version || '1.0'
+              });
+            }
+          }
+          if (newApps.length > 0) {
+            const combined = [...current, ...newApps];
+            this.saveUserConfiguredApps(combined);
+            return combined;
+          }
+        }
+      } catch (e) {
+        // Safe fallback
+      }
+    }
+
+    // 3. Load configured package registry from persistent storage
     return this.getUserConfiguredApps();
   }
 
@@ -174,7 +146,7 @@ export class PackageManager {
       console.warn('[PackageManager] Failed to load stored package registry:', e);
     }
 
-    // Default initialization with real baseline packages
+    // Default initialization with baseline neutral packages
     this.saveUserConfiguredApps(BASELINE_REAL_PACKAGES);
     return BASELINE_REAL_PACKAGES;
   }
@@ -224,9 +196,8 @@ export class PackageManager {
     } catch (e) {
       console.warn('[PackageManager] Error loading blocked packages:', e);
     }
-    // Default blocked packages: high-dopamine social apps
-    const defaults = ['com.instagram.android', 'com.zhiliaoapp.musically', 'com.twitter.android', 'com.facebook.katana'];
-    return defaults;
+    // No hardcoded default blocked apps: user selects explicitly
+    return [];
   }
 
   public static saveBlockedPackages(packages: string[]): void {

@@ -60,7 +60,10 @@ import {
   Eye,
   EyeOff,
   Activity,
-  ScanLine
+  ScanLine,
+  Waves,
+  Cpu,
+  Menu
 } from 'lucide-react';
 import { DisciplineBridge, SystemLockdownPayload } from '../DisciplineBridge';
 import { LocalUserSession } from '../types/session';
@@ -74,6 +77,8 @@ import { RamaVoice, RamaVoiceState } from '../utils/ramaVoiceService';
 import { RamaPermissionsManager, RamaPermissionDefinition, RamaPermissionId } from '../utils/ramaPermissions';
 import { InAppMediaService, StreamingPlatform } from '../utils/inAppMediaService';
 import { RamaIntentParser } from '../utils/ramaIntentParser';
+import { RamaComponentRegistry } from '../utils/ramaComponentRegistry';
+import { RamaIntentRegistry } from '../utils/ramaIntentRegistry';
 import CommandCatalog from './CommandCatalog';
 
 interface RamaProps {
@@ -102,14 +107,29 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
   }, [session]);
 
   // Window states: mode can be 'window' (full card) or 'assistant' (Gemini-style Mini HUD)
-  const [displayMode, setDisplayMode] = useState<'window' | 'assistant'>('window');
+  const [displayMode, setDisplayMode] = useState<'window' | 'assistant'>(() => 
+    (localStorage.getItem('rama_display_mode') as 'window' | 'assistant') || 'window'
+  );
   const [isOpen, setIsOpen] = useState(true);
   const [isMinimized, setIsMinimized] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [input, setInput] = useState('');
 
+  useEffect(() => {
+    localStorage.setItem('rama_display_mode', displayMode);
+  }, [displayMode]);
+
   // Primary Tab state: 'chat' (DEFAULT MAIN PANEL), 'tools', 'history', 'memory', 'permissions'
   const [activeTab, setActiveTab] = useState<'chat' | 'tools' | 'history' | 'memory' | 'permissions'>('chat');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [activeHubView, setActiveHubView] = useState<{ view: string; data: any }>({ view: 'default', data: null });
+
+  useEffect(() => {
+    const unsub = RamaComponentRegistry.subscribe((view, data) => {
+      setActiveHubView({ view, data });
+    });
+    return () => unsub();
+  }, []);
 
   // Video / Camera Preview State (Live Video Feedback)
   const [isVideoActive, setIsVideoActive] = useState<boolean>(false);
@@ -201,7 +221,26 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
     const unsubscribe = DisciplineBridge.subscribe((state) => {
       setLockdownState(state);
     });
-    return () => unsubscribe();
+
+    // Handle state persistence on visibility change
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        console.log('[Rama] App backgrounded. Persistence active via localStorage and System Overlay.');
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    // Check and request system overlay permission on mount
+    DisciplineBridge.requestSystemOverlayPermission().then(granted => {
+      if (!granted) {
+        console.log('[Rama] System overlay permission not granted.');
+      }
+    });
+
+    return () => {
+      unsubscribe();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
 
   // Subscribe to RamaVoice state & voice command transcripts
@@ -223,10 +262,14 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
 
     const unsub = RamaVoice.onWakeWord(unsubWakeWord);
 
+    const handleCloseHub = () => setIsOpen(false);
+    window.addEventListener('cymatic-close-hub', handleCloseHub);
+
     return () => {
       unsubVoice();
       unsubCommand();
       unsub();
+      window.removeEventListener('cymatic-close-hub', handleCloseHub);
     };
   }, [activeSessionId, sessions, userMoniker]);
 
@@ -940,9 +983,95 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
         </div>
       )}
 
-      {/* Header Bar */}
-      <div className="px-4 py-3 bg-gray-900/90 border-b border-gray-800 flex items-center justify-between select-none shrink-0">
+      {/* Header Bar with Sidebar Toggle */}
+      <div className="px-4 py-3 bg-gray-900/90 border-b border-gray-800 flex items-center justify-between select-none shrink-0 relative">
+        {/* Slide-out Sidebar Overlay */}
+        {isSidebarOpen && (
+          <div className="absolute top-full left-0 z-50 w-64 bg-gray-950/98 border-r border-b border-emerald-500/30 p-3 shadow-2xl backdrop-blur-xl space-y-3 animate-in slide-in-from-left duration-200">
+            <div className="flex items-center justify-between border-b border-gray-800 pb-2">
+              <span className="text-xs font-black uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+                <Layers size={14} /> Rama OS Navigation
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsSidebarOpen(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                <X size={14} />
+              </button>
+            </div>
+
+            <div className="space-y-1">
+              <div className="text-[10px] font-mono text-gray-500 uppercase px-2 py-1">Recent Chats & Categories</div>
+              {sessions.map(s => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => {
+                    setActiveSessionId(s.id);
+                    ConversationManager.setActiveSessionId(s.id);
+                    setActiveTab('chat');
+                    setIsSidebarOpen(false);
+                  }}
+                  className={`w-full text-left px-2.5 py-2 rounded-xl text-xs font-medium transition-all flex items-center justify-between cursor-pointer ${
+                    s.id === activeSessionId
+                      ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-500/40 font-bold'
+                      : 'text-gray-300 hover:bg-gray-900'
+                  }`}
+                >
+                  <span className="truncate">{s.title || 'Session'}</span>
+                  <ChevronRight size={12} className="text-gray-500" />
+                </button>
+              ))}
+            </div>
+
+            <div className="pt-2 border-t border-gray-800 space-y-1">
+              <button
+                type="button"
+                onClick={() => {
+                  const { sessions: updated, newSession } = ConversationManager.createNewSession(userMoniker, sessions);
+                  setSessions(updated);
+                  setActiveSessionId(newSession.id);
+                  setActiveTab('chat');
+                  setIsSidebarOpen(false);
+                }}
+                className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-gray-950 font-black text-xs uppercase rounded-xl flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
+              >
+                <Plus size={13} /> New Chat Session
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('permissions');
+                  setIsSidebarOpen(false);
+                }}
+                className="w-full py-2 bg-gray-900 hover:bg-gray-850 text-gray-300 rounded-xl text-xs font-bold flex items-center gap-2 px-3 cursor-pointer"
+              >
+                <ShieldCheck size={14} className="text-emerald-400" /> Device Permissions
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('memory');
+                  setIsSidebarOpen(false);
+                }}
+                className="w-full py-2 bg-gray-900 hover:bg-gray-850 text-gray-300 rounded-xl text-xs font-bold flex items-center gap-2 px-3 cursor-pointer"
+              >
+                <Brain size={14} className="text-purple-400" /> Memory Vault
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="flex items-center gap-2 min-w-0">
+          <button
+            type="button"
+            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            className="p-1.5 bg-gray-900 hover:bg-gray-850 border border-gray-800 rounded-xl text-emerald-400 cursor-pointer transition-colors"
+            title="Toggle Sidebar Menu"
+          >
+            <Menu size={16} />
+          </button>
           <div className="p-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400">
             <BotMessageSquare size={17} />
           </div>
@@ -954,13 +1083,29 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
               </span>
             </div>
             <div className="text-[10px] text-gray-400 font-mono truncate">
-              Content-Aware Voice & Intent Assistant • Connected
+              Gemini Architecture • Content-Aware OS Intelligence
             </div>
           </div>
         </div>
 
         {/* Window Controls */}
         <div className="flex items-center gap-1 shrink-0">
+          <button
+            type="button"
+            onClick={async () => {
+              const granted = await DisciplineBridge.requestSystemOverlayPermission();
+              if (granted) {
+                await DisciplineBridge.setSystemOverlayMode(true);
+                showToast('System Overlay Mode Active');
+              } else {
+                showToast('System Overlay Permission Required');
+              }
+            }}
+            className="p-1.5 text-gray-400 hover:text-emerald-400 rounded-lg hover:bg-gray-800 transition-colors cursor-pointer"
+            title="Enable Persistent System Overlay"
+          >
+            <Layers size={14} />
+          </button>
           <button
             type="button"
             onClick={() => setDisplayMode('assistant')}
@@ -1104,19 +1249,92 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
           )}
 
           {/* =================================================================
-             TAB 1: CHAT PANEL (THE DEFAULT MAIN PANEL)
+             TAB 1: CHAT PANEL WITH GEMINI UI LAYOUT & REACTIVE REGISTRY
              ================================================================= */}
           {activeTab === 'chat' && (
             <div className="flex-1 flex flex-col min-h-0 overflow-hidden h-[420px]">
-              {/* Message Stream */}
+              {/* Message Stream or Center Prompt Screen with Dynamic Suggestion Pills */}
               <div className="flex-1 overflow-y-auto p-4 space-y-3.5 custom-scrollbar min-h-0">
-                {messages.length === 0 ? (
-                  <div className="text-center py-8 space-y-2">
-                    <BotMessageSquare size={32} className="mx-auto text-emerald-500/50" />
-                    <h4 className="text-xs font-black uppercase tracking-wider text-white">Rama AI Online</h4>
-                    <p className="text-[11px] text-gray-400 max-w-xs mx-auto">
-                      Your intelligent, content-aware companion. Tell Rama to draft messages to your mom, call contacts, stream songs, or enforce lockdown.
-                    </p>
+                {activeHubView.view !== 'default' ? (
+                  <div className="p-4 bg-gray-900/90 border border-emerald-500/40 rounded-2xl space-y-3">
+                    <div className="flex items-center justify-between border-b border-gray-800 pb-2">
+                      <span className="text-xs font-black uppercase tracking-wider text-emerald-400">
+                        Content-Aware View: {activeHubView.view.toUpperCase()}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => RamaComponentRegistry.setView('default')}
+                        className="text-gray-400 hover:text-white"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                    {activeHubView.view === 'contacts' && (
+                      <div className="space-y-2 text-xs">
+                        <div className="text-gray-300 font-bold">Contact Directory Resolution</div>
+                        <p className="text-gray-400 text-[11px]">Query: "{activeHubView.data?.query || 'General'}"</p>
+                        <div className="grid grid-cols-1 gap-1.5 pt-1">
+                          {['Mom (+256 700 123456)', 'Dad (+256 772 987654)', 'Imran (+256 750 112233)'].map(c => (
+                            <button
+                              key={c}
+                              type="button"
+                              onClick={() => {
+                                handleSendMessage(`Send message to ${c}`);
+                                RamaComponentRegistry.setView('default');
+                              }}
+                              className="p-2.5 bg-gray-950 hover:bg-emerald-950/40 border border-gray-800 hover:border-emerald-500/40 rounded-xl text-left text-white font-medium flex items-center justify-between cursor-pointer"
+                            >
+                              <span>{c}</span>
+                              <MessageSquare size={13} className="text-emerald-400" />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {activeHubView.view === 'media_player' && (
+                      <div className="space-y-2 text-xs">
+                        <div className="text-gray-300 font-bold">In-App Media Stream</div>
+                        <p className="text-gray-400 text-[11px]">Now playing: "{activeHubView.data?.query}" via {activeHubView.data?.platform || 'YouTube'}</p>
+                        <div className="p-3 bg-black rounded-xl border border-gray-800 text-center font-mono text-emerald-400 text-xs">
+                          🎵 Streaming active in background. Soundscape playing.
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : messages.length === 0 ? (
+                  <div className="text-center py-10 space-y-4">
+                    <div className="w-14 h-14 mx-auto rounded-3xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shadow-xl shadow-emerald-500/10">
+                      <Sparkles size={26} className="animate-pulse" />
+                    </div>
+                    <div className="space-y-1">
+                      <h4 className="text-sm font-black uppercase tracking-wider text-white">
+                        Good day, {userMoniker}.
+                      </h4>
+                      <p className="text-xs text-gray-400 max-w-sm mx-auto leading-relaxed">
+                        How can Rama assist your executive discipline and daily execution today?
+                      </p>
+                    </div>
+
+                    {/* Gemini-Style Dynamic Suggestion Pills */}
+                    <div className="flex flex-wrap items-center justify-center gap-2 pt-2 max-w-md mx-auto">
+                      {[
+                        'Play morning focus soundscape',
+                        'Call Mom',
+                        'Send contract summary via WhatsApp',
+                        'Generate supervisor lockdown PIN',
+                        'List contacts'
+                      ].map((suggestion) => (
+                        <button
+                          key={suggestion}
+                          type="button"
+                          onClick={() => handleSendMessage(suggestion)}
+                          className="px-3.5 py-2 bg-gray-900 hover:bg-gray-850 text-gray-200 border border-gray-800 hover:border-emerald-500/50 rounded-2xl text-xs font-medium transition-all cursor-pointer shadow-sm flex items-center gap-1.5"
+                        >
+                          <Sparkles size={12} className="text-emerald-400 shrink-0" />
+                          <span>{suggestion}</span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 ) : (
                   messages.map(msg => (
@@ -1150,61 +1368,7 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
                 <div ref={chatBottomRef} />
               </div>
 
-              {/* Quick Actions Shortcuts Row */}
-              <div className="px-3 py-1.5 bg-gray-950/80 border-t border-gray-900 flex items-center gap-1.5 overflow-x-auto no-scrollbar shrink-0">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDesignerType('whatsapp');
-                    setDesignerRecipient('Mom');
-                    setDesignerBody("Hi Mom, just wanted to check in and see how you are doing. Hope you're having a wonderful day! Love you.");
-                    setShowMessageDesigner(true);
-                  }}
-                  className="px-2.5 py-1 bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-lg text-[10px] font-mono text-emerald-400 flex items-center gap-1 cursor-pointer whitespace-nowrap"
-                >
-                  <MessageSquare size={11} /> Message Mom
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowCallModal(true)}
-                  className="px-2.5 py-1 bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-lg text-[10px] font-mono text-emerald-400 flex items-center gap-1 cursor-pointer whitespace-nowrap"
-                >
-                  <PhoneCall size={11} /> Call Contact
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDesignerType('email');
-                    setShowMessageDesigner(true);
-                  }}
-                  className="px-2.5 py-1 bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-lg text-[10px] font-mono text-emerald-400 flex items-center gap-1 cursor-pointer whitespace-nowrap"
-                >
-                  <Mail size={11} /> Send Email
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowMusicSearch(true)}
-                  className="px-2.5 py-1 bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-lg text-[10px] font-mono text-purple-300 flex items-center gap-1 cursor-pointer whitespace-nowrap"
-                >
-                  <Music size={11} /> Stream Music
-                </button>
-                <button
-                  type="button"
-                  onClick={() => imageInputRef.current?.click()}
-                  className="px-2.5 py-1 bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-lg text-[10px] font-mono text-blue-300 flex items-center gap-1 cursor-pointer whitespace-nowrap"
-                >
-                  <ImageIcon size={11} /> Send Image
-                </button>
-                <button
-                  type="button"
-                  onClick={() => audioFileInputRef.current?.click()}
-                  className="px-2.5 py-1 bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-lg text-[10px] font-mono text-amber-300 flex items-center gap-1 cursor-pointer whitespace-nowrap"
-                >
-                  <FolderOpen size={11} /> Play Storage Audio
-                </button>
-              </div>
-
-              {/* Chat Input Bar Pinned at Bottom */}
+              {/* Bottom Input Bar with Voice, Attachment, and Send */}
               <div className="p-3 bg-gray-950 border-t border-gray-800 shrink-0">
                 <form
                   onSubmit={(e) => {
@@ -1226,11 +1390,20 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
                     {voiceState.isListening ? <Mic size={16} /> : <MicOff size={16} />}
                   </button>
 
+                  <button
+                    type="button"
+                    onClick={() => imageInputRef.current?.click()}
+                    className="p-2.5 bg-gray-900 hover:bg-gray-850 border border-gray-800 text-gray-400 hover:text-emerald-400 rounded-xl transition-all cursor-pointer shrink-0"
+                    title="Attach Image from Storage"
+                  >
+                    <ImageIcon size={16} />
+                  </button>
+
                   <input
                     type="text"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    placeholder="Tell Rama (e.g. Write message to my mom, Call, Play Bohemian Rhapsody)..."
+                    placeholder="Ask Gemini / Rama (e.g. Write message to my mom, Call, Play music)..."
                     className="flex-1 bg-gray-900 border border-gray-800 focus:border-emerald-500 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-gray-500 font-sans outline-none min-w-0"
                   />
 

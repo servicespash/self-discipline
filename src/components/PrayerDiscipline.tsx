@@ -286,7 +286,9 @@ export default function PrayerDiscipline() {
     setCompletedPrayers((prev) => {
       const next = !prev[name];
       if (next && config.autoLockdownEnabled) {
-        DisciplineBridge.initiateLockdown(15, 'com.whatsapp,com.instagram.android');
+        const blocked = JSON.parse(localStorage.getItem('sdc_blocked_packages_v1') || '[]');
+        const packages = blocked.length > 0 ? blocked.join(',') : '';
+        DisciplineBridge.initiateLockdown(15, packages);
       }
       return { ...prev, [name]: next };
     });
@@ -299,7 +301,9 @@ export default function PrayerDiscipline() {
         if (w.id === id) {
           const next = !w.completed;
           if (next && config.autoLockdownEnabled) {
-            DisciplineBridge.initiateLockdown(15, 'com.whatsapp,com.instagram.android');
+            const blocked = JSON.parse(localStorage.getItem('sdc_blocked_packages_v1') || '[]');
+            const packages = blocked.length > 0 ? blocked.join(',') : '';
+            DisciplineBridge.initiateLockdown(15, packages);
           }
           return {
             ...w,

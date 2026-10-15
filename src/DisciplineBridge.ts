@@ -5,6 +5,8 @@
  */
 
 import { supabase } from './utils/supabase';
+import { governanceService } from './utils/governanceService';
+import { PackageManager } from './utils/packageManager';
 
 export interface DeviceAppRecord {
   id: string; // Android package name e.g. com.instagram.android
@@ -15,17 +17,7 @@ export interface DeviceAppRecord {
   defaultRestricted?: boolean;
 }
 
-export const SOCIAL_MEDIA_PACKAGES: string[] = [
-  'com.whatsapp',
-  'com.instagram.android',
-  'com.zhiliaoapp.musically', // TikTok
-  'com.twitter.android',
-  'com.facebook.katana',
-  'com.snapchat.android',
-  'com.reddit.frontpage',
-  'com.google.android.youtube',
-  'com.pinterest'
-];
+export const SOCIAL_MEDIA_PACKAGES: string[] = [];
 
 export const DEFAULT_DEVICE_APPS: DeviceAppRecord[] = [];
 
@@ -130,8 +122,10 @@ class DisciplineBridgeEngine {
     }
   }
 
-  public isSocialMediaPackage(packageId: string): boolean {
-    return SOCIAL_MEDIA_PACKAGES.includes(packageId);
+  public async isSocialMediaPackage(packageId: string): Promise<boolean> {
+    const apps = await PackageManager.fetchAllApps();
+    const app = apps.find(a => a.packageName === packageId);
+    return app ? app.category === 'social' || app.category === 'messaging' : false;
   }
 
   public isValidPackageName(packageName: string): boolean {
@@ -161,13 +155,23 @@ class DisciplineBridgeEngine {
 
     if (contractId) {
       try {
-        const { data: contract, error } = await supabase
-          .from('governance_contracts')
-          .select('*')
-          .eq('id', contractId)
-          .single();
+        let contract: any = null;
+        try {
+          const { data, error } = await supabase
+            .from('governance_contracts')
+            .select('*')
+            .eq('id', contractId)
+            .maybeSingle();
+          if (!error && data) {
+            contract = data;
+          }
+        } catch {}
 
-        if (error || !contract) {
+        if (!contract) {
+          contract = await governanceService.getContractById(contractId);
+        }
+
+        if (!contract) {
           console.warn('[DisciplineBridge] Security Violation: Attempted lockdown with invalid or missing contract ID:', contractId);
           throw new Error('Lockdown rejected: Associated governance contract not found.');
         }
@@ -253,71 +257,28 @@ class DisciplineBridgeEngine {
     return true;
   }
 
-  public categorizePackageName(pkgName: string): {
+  public categorizePackageName(pkgName: string, nativeCategory?: string): {
     category: 'Productivity' | 'Social' | 'Entertainment' | 'Utility' | 'Finance' | 'Restricted' | 'system';
     dopamineLevel: 'extreme' | 'high' | 'moderate' | 'low' | 'neutral';
   } {
+    // 1. Use native categorization if provided by PackageManager
+    if (nativeCategory) {
+       const cat = nativeCategory.toLowerCase();
+       if (cat === 'social' || cat === 'messaging') return { category: 'Social', dopamineLevel: 'extreme' };
+       if (cat === 'productivity' || cat === 'work') return { category: 'Productivity', dopamineLevel: 'low' };
+       if (cat === 'entertainment' || cat === 'media') return { category: 'Entertainment', dopamineLevel: 'high' };
+       if (cat === 'finance') return { category: 'Finance', dopamineLevel: 'low' };
+       if (cat === 'system') return { category: 'system', dopamineLevel: 'neutral' };
+    }
+
+    // 2. Fallback to generic patterns
     const lower = pkgName.toLowerCase();
-    if (
-      lower.includes('bank') ||
-      lower.includes('finance') ||
-      lower.includes('wallet') ||
-      lower.includes('pay') ||
-      lower.includes('money')
-    ) {
-      return { category: 'Finance', dopamineLevel: 'low' };
-    }
-    if (
-      lower.includes('whatsapp') ||
-      lower.includes('telegram') ||
-      lower.includes('signal') ||
-      lower.includes('messenger')
-    ) {
-      return { category: 'Utility', dopamineLevel: 'moderate' };
-    }
-    if (
-      lower.includes('instagram') ||
-      lower.includes('musically') ||
-      lower.includes('tiktok') ||
-      lower.includes('twitter') ||
-      lower.includes('facebook') ||
-      lower.includes('snapchat') ||
-      lower.includes('reddit') ||
-      lower.includes('pinterest')
-    ) {
-      return { category: 'Social', dopamineLevel: 'extreme' };
-    }
-    if (
-      lower.includes('youtube') ||
-      lower.includes('netflix') ||
-      lower.includes('spotify') ||
-      lower.includes('twitch') ||
-      lower.includes('hulu') ||
-      lower.includes('disney') ||
-      lower.includes('game') ||
-      lower.includes('roblox') ||
-      lower.includes('minecraft')
-    ) {
-      return { category: 'Entertainment', dopamineLevel: 'high' };
-    }
-    if (
-      lower.includes('settings') ||
-      lower.includes('dialer') ||
-      lower.includes('system') ||
-      lower.includes('contacts') ||
-      lower.includes('camera')
-    ) {
-      return { category: 'system', dopamineLevel: 'neutral' };
-    }
-    if (
-      lower.includes('calc') ||
-      lower.includes('notes') ||
-      lower.includes('docs') ||
-      lower.includes('code') ||
-      lower.includes('termux')
-    ) {
-      return { category: 'Productivity', dopamineLevel: 'low' };
-    }
+    if (lower.includes('bank') || lower.includes('finance') || lower.includes('wallet') || lower.includes('pay') || lower.includes('money')) return { category: 'Finance', dopamineLevel: 'low' };
+    if (lower.includes('whatsapp') || lower.includes('telegram') || lower.includes('signal') || lower.includes('messenger')) return { category: 'Utility', dopamineLevel: 'moderate' };
+    if (lower.includes('instagram') || lower.includes('tiktok') || lower.includes('facebook') || lower.includes('twitter')) return { category: 'Social', dopamineLevel: 'extreme' };
+    if (lower.includes('youtube') || lower.includes('netflix') || lower.includes('spotify')) return { category: 'Entertainment', dopamineLevel: 'high' };
+    if (lower.includes('settings') || lower.includes('dialer') || lower.includes('camera')) return { category: 'system', dopamineLevel: 'neutral' };
+    if (lower.includes('calc') || lower.includes('notes') || lower.includes('docs')) return { category: 'Productivity', dopamineLevel: 'low' };
     return { category: 'Restricted', dopamineLevel: 'moderate' };
   }
 
@@ -365,6 +326,42 @@ class DisciplineBridgeEngine {
       console.error('[DisciplineBridge] Failed to save package:', e);
     }
     return updated;
+  }
+
+  public async requestSystemOverlayPermission(): Promise<boolean> {
+    if (typeof window !== 'undefined' && window.Capacitor?.isPluginAvailable('DisciplineNative')) {
+      try {
+        const plugin = window.Capacitor.Plugins.DisciplineNative as any;
+        return await plugin.requestSystemOverlayPermission();
+      } catch (e) {
+        console.error('[DisciplineBridge] Overlay permission request failed:', e);
+      }
+    }
+    return false;
+  }
+
+  public async setSystemOverlayMode(active: boolean): Promise<void> {
+    if (typeof window !== 'undefined' && window.Capacitor?.isPluginAvailable('DisciplineNative')) {
+      try {
+        const plugin = window.Capacitor.Plugins.DisciplineNative as any;
+        await plugin.setSystemOverlayMode({ active });
+      } catch (e) {
+        console.error('[DisciplineBridge] Overlay mode toggle failed:', e);
+      }
+    }
+  }
+
+  private micActive: boolean = false;
+
+  public setMicrophoneActive(active: boolean) {
+    if (this.micActive === active) return;
+    console.log(`[DisciplineBridge] Microphone state transition: ${this.micActive} -> ${active}`);
+    this.micActive = active;
+  }
+
+  public isMicrophoneAllowed(): boolean {
+    // Check lockdown or other constraints
+    return !this.lockdownState.active;
   }
 
   public getState(): SystemLockdownPayload {

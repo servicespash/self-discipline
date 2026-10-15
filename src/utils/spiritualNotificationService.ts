@@ -257,7 +257,9 @@ class SpiritualNotificationEngine {
     // 3. Auxiliary deep work lockdown during prayer window
     if (config.autoLockdownEnabled) {
       try {
-        DisciplineBridge.initiateLockdown(15, 'com.whatsapp,com.instagram.android,com.tiktok');
+        const blocked = JSON.parse(localStorage.getItem('sdc_blocked_packages_v1') || '[]');
+        const packages = blocked.length > 0 ? blocked.join(',') : '';
+        DisciplineBridge.initiateLockdown(15, packages);
       } catch (e) {}
     }
 
@@ -308,7 +310,9 @@ class SpiritualNotificationEngine {
     // 3. Auxiliary deep work lockdown during watch window
     if (config.autoLockdownEnabled) {
       try {
-        DisciplineBridge.initiateLockdown(15, 'com.whatsapp,com.instagram.android,com.tiktok');
+        const blocked = JSON.parse(localStorage.getItem('sdc_blocked_packages_v1') || '[]');
+        const packages = blocked.length > 0 ? blocked.join(',') : '';
+        DisciplineBridge.initiateLockdown(15, packages);
       } catch (e) {}
     }
 

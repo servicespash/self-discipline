@@ -1,9 +1,11 @@
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
- * Cymatic OS Universal Multi-Origin Media Resolver
+ * Cymatic OS Universal Multi-Origin Media Resolver & Ambient Soundscapes Dispatcher
  * Strips human conversational phrasing and queries multiple public media mirrors concurrently.
  */
+
+import { AmbientSoundscape, AMBIENT_PRESETS, AmbientSoundscapePresetId } from './ambientSoundscapeEngine';
 
 export type StreamingPlatform = 'youtube' | 'spotify' | 'deezer' | 'local' | 'universal_stream' | 'local_storage' | 'adhan' | 'focus_ambient';
 
@@ -29,17 +31,17 @@ class CymaticUniversalMediaEngine {
   private currentTrack: MediaTrack | null = null;
   private isPlaying: boolean = false;
   private isVisible: boolean = false;
+  private activeMode: 'ambient' | 'media' = 'ambient';
   private localFilesIndex: Map<string, File> = new Map();
-  private listeners: Set<(track: MediaTrack | null, isPlaying: boolean, isVisible: boolean) => void> = new Set();
+  private listeners: Set<(track: MediaTrack | null, isPlaying: boolean, isVisible: boolean, mode: 'ambient' | 'media') => void> = new Set();
 
   constructor() {
     this.currentTrack = {
-      id: 'default_adhan',
-      title: 'Adhan Call to Prayer (Local Asset)',
-      artist: 'Cymatic OS Local',
-      platform: 'adhan',
-      query: 'adhan',
-      audioUrl: '/audio/adhan.mp3'
+      id: 'default_soundscape',
+      title: 'Alpha Waves (10 Hz)',
+      artist: 'Flow State & Relaxed Concentration',
+      platform: 'focus_ambient',
+      query: 'binaural_beats'
     };
   }
 
@@ -50,21 +52,50 @@ class CymaticUniversalMediaEngine {
     });
   }
 
-  public subscribe(listener: (track: MediaTrack | null, isPlaying: boolean, isVisible: boolean) => void): () => void {
+  public subscribe(listener: (track: MediaTrack | null, isPlaying: boolean, isVisible: boolean, mode: 'ambient' | 'media') => void): () => void {
     this.listeners.add(listener);
-    listener(this.currentTrack, this.isPlaying, this.isVisible);
+    listener(this.currentTrack, this.isPlaying, this.isVisible, this.activeMode);
     return () => {
       this.listeners.delete(listener);
     };
   }
 
   private notify() {
-    this.listeners.forEach(cb => cb(this.currentTrack, this.isPlaying, this.isVisible));
+    this.listeners.forEach(cb => cb(this.currentTrack, this.isPlaying, this.isVisible, this.activeMode));
+  }
+
+  public setMode(mode: 'ambient' | 'media') {
+    this.activeMode = mode;
+    this.notify();
+  }
+
+  public getMode(): 'ambient' | 'media' {
+    return this.activeMode;
+  }
+
+  /**
+   * Launch ambient soundscape directly
+   */
+  public playAmbient(presetId: AmbientSoundscapePresetId = 'binaural_alpha') {
+    const preset = AMBIENT_PRESETS[presetId] || AMBIENT_PRESETS.binaural_alpha;
+    AmbientSoundscape.playPreset(preset.id);
+
+    this.activeMode = 'ambient';
+    this.currentTrack = {
+      id: `ambient_${preset.id}`,
+      title: preset.name,
+      artist: `${preset.tagline} • ${preset.benefits}`,
+      platform: 'focus_ambient',
+      query: preset.category
+    };
+
+    this.isPlaying = true;
+    this.isVisible = true;
+    this.notify();
   }
 
   /**
    * Advanced Multi-Language Intent Stripper
-   * Removes conversational fillers: "play for me", "nkubira", "search for", "find me", "can you play"
    */
   public extractCleanSearchTerms(rawQuery: string): string {
     return rawQuery
@@ -81,7 +112,30 @@ class CymaticUniversalMediaEngine {
     const cleaned = this.extractCleanSearchTerms(query);
     const lower = cleaned.toLowerCase();
 
-    // 1. Spiritual Call Check
+    // 1. Ambient Soundscapes Check
+    if (lower.includes('white noise') || lower.includes('pink noise') || lower.includes('brown noise')) {
+      const preset: AmbientSoundscapePresetId = lower.includes('brown') ? 'brown_cabin' : lower.includes('pink') ? 'pink_rain' : 'white_crisp';
+      this.playAmbient(preset);
+      return;
+    }
+
+    if (lower.includes('binaural') || lower.includes('alpha wave') || lower.includes('theta') || lower.includes('gamma')) {
+      const preset: AmbientSoundscapePresetId = lower.includes('theta') ? 'binaural_theta' : lower.includes('gamma') ? 'binaural_gamma' : 'binaural_alpha';
+      this.playAmbient(preset);
+      return;
+    }
+
+    if (lower.includes('zen') || lower.includes('temple') || lower.includes('singing bowl') || lower.includes('tibetan') || lower.includes('temple bell')) {
+      const preset: AmbientSoundscapePresetId = lower.includes('bell') ? 'zen_bell' : lower.includes('stream') ? 'zen_stream' : 'zen_bowls';
+      this.playAmbient(preset);
+      return;
+    }
+
+    // Stop ambient sound if switching to music
+    AmbientSoundscape.pause();
+    this.activeMode = 'media';
+
+    // 2. Spiritual Call Check
     if (lower.includes('adhan') || lower.includes('azan')) {
       this.currentTrack = {
         id: `adhan_${Date.now()}`,
@@ -97,7 +151,7 @@ class CymaticUniversalMediaEngine {
       return;
     }
 
-    // 2. Local Device File Search (Matches exact title, artist, or file name)
+    // 3. Local Device File Search (Matches exact title, artist, or file name)
     for (const [fileName, file] of this.localFilesIndex.entries()) {
       if (fileName.includes(lower) || lower.includes(fileName)) {
         this.playLocalAudioFile(file);
@@ -105,7 +159,7 @@ class CymaticUniversalMediaEngine {
       }
     }
 
-    // 3. Multi-Mirror Concurrent Public Network Resolution across YouTube, Spotify, Deezer & Universal Stream mirrors
+    // 4. Multi-Mirror Concurrent Public Network Resolution across YouTube, Spotify, Deezer & Universal Stream mirrors
     const audioStreamUrl = await this.resolveAudioFromPublicMirrors(cleaned);
 
     this.currentTrack = {
@@ -126,14 +180,12 @@ class CymaticUniversalMediaEngine {
    * Queries public open audio indexes in parallel and returns the fastest responding MP3/Audio stream URL
    */
   private async resolveAudioFromPublicMirrors(searchQuery: string): Promise<string> {
-    // If user provided a direct MP3 or stream link
     if (searchQuery.startsWith('http://') || searchQuery.startsWith('https://')) {
       return searchQuery;
     }
 
     const encodeQ = encodeURIComponent(searchQuery);
 
-    // Race conditions across public API mirrors for high availability
     for (const baseUrl of PUBLIC_AUDIO_MIRRORS) {
       try {
         const controller = new AbortController();
@@ -155,16 +207,16 @@ class CymaticUniversalMediaEngine {
           }
         }
       } catch (err) {
-        // Fall through to next mirror on timeout or network error
         continue;
       }
     }
 
-    // Fallback if all public mirrors fail offline
     return '/audio/adhan.mp3';
   }
 
   public playLocalAudioFile(file: File) {
+    AmbientSoundscape.pause();
+    this.activeMode = 'media';
     const blobUrl = URL.createObjectURL(file);
     const title = file.name.replace(/\.[^/.]+$/, '');
 
@@ -184,6 +236,13 @@ class CymaticUniversalMediaEngine {
 
   public setPlaying(playing: boolean) {
     this.isPlaying = playing;
+    if (this.currentTrack?.platform === 'focus_ambient') {
+      if (playing) {
+        AmbientSoundscape.togglePlay();
+      } else {
+        AmbientSoundscape.pause();
+      }
+    }
     this.notify();
   }
 
@@ -192,9 +251,16 @@ class CymaticUniversalMediaEngine {
     this.notify();
   }
 
+  public open(mode: 'ambient' | 'media' = 'ambient') {
+    this.activeMode = mode;
+    this.isVisible = true;
+    this.notify();
+  }
+
   public close() {
     this.isPlaying = false;
     this.isVisible = false;
+    AmbientSoundscape.pause();
     this.notify();
   }
 

@@ -68,10 +68,30 @@ const MONTH_NAMES = [
 
 const DAYS_OF_WEEK = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+const getDynamicPresetPackages = (profile: string): string => {
+  try {
+    const apps = JSON.parse(localStorage.getItem('sdc_user_configured_apps_v1') || '[]');
+    const blocked = JSON.parse(localStorage.getItem('sdc_blocked_packages_v1') || '[]');
+    if (profile === 'custom' || profile === 'fortress') {
+      if (blocked.length > 0) return blocked.join(',');
+      return apps.map((a: any) => a.packageName).join(',');
+    }
+    if (profile === 'social') {
+      const social = apps.filter((a: any) => a.category === 'social' || a.category === 'messaging').map((a: any) => a.packageName);
+      return social.length > 0 ? social.join(',') : (blocked.join(',') || '');
+    }
+    if (profile === 'distraction') {
+      const dist = apps.filter((a: any) => a.category === 'entertainment' || a.category === 'social').map((a: any) => a.packageName);
+      return dist.length > 0 ? dist.join(',') : (blocked.join(',') || '');
+    }
+  } catch {}
+  return '';
+};
+
 const PRESET_PACKAGES: Record<string, string> = {
-  social: 'com.whatsapp,com.instagram.android,com.twitter.android,com.facebook.katana',
-  distraction: 'com.google.android.youtube,com.zhiliaoapp.musically,com.netflix.mediaclient',
-  fortress: 'com.whatsapp,com.instagram.android,com.google.android.youtube,com.tiktok,com.facebook.katana,com.twitter.android'
+  get social() { return getDynamicPresetPackages('social'); },
+  get distraction() { return getDynamicPresetPackages('distraction'); },
+  get fortress() { return getDynamicPresetPackages('fortress'); }
 };
 
 export default function CalendarManager({ accessToken }: { accessToken: string | null }) {
@@ -197,7 +217,7 @@ export default function CalendarManager({ accessToken }: { accessToken: string |
   // Active Lockdown Window Indicator State
   const [activeWindowMatch, setActiveWindowMatch] = useState<DailyLockdownWindow | null>(null);
 
-  // Persistence
+  // Persistence & Event bus
   useEffect(() => {
     try {
       localStorage.setItem(EVENTS_STORAGE_KEY, JSON.stringify(events));
@@ -205,6 +225,19 @@ export default function CalendarManager({ accessToken }: { accessToken: string |
       console.error('Failed to save events:', e);
     }
   }, [events]);
+
+  useEffect(() => {
+    const handleCalendarRefresh = () => {
+      try {
+        const saved = localStorage.getItem(EVENTS_STORAGE_KEY);
+        if (saved) {
+          setEvents(JSON.parse(saved));
+        }
+      } catch (e) {}
+    };
+    window.addEventListener('cymatic-calendar-refresh', handleCalendarRefresh);
+    return () => window.removeEventListener('cymatic-calendar-refresh', handleCalendarRefresh);
+  }, []);
 
   useEffect(() => {
     try {

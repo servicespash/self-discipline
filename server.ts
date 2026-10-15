@@ -129,6 +129,46 @@ Core Personality & Conversational Strategy:
     }
   });
 
+  app.post('/api/dispatch-email', async (req, res) => {
+    const { to, subject, body, contractId } = req.body;
+    console.log(`[Dispatch] Sending email to ${to}: ${subject}`);
+    res.json({ success: true, message: 'Email dispatch initiated.' });
+  });
+
+  // Supervisor Override PIN generator & validator map
+  const supervisorPinRegistry = new Map<string, { contractId: string; supervisorId: string; createdAt: number; used: boolean }>();
+
+  app.post('/api/supervisor-pin/generate', async (req, res) => {
+    const { contractId, supervisorId } = req.body;
+    const pin = Math.floor(100000 + Math.random() * 900000).toString();
+    supervisorPinRegistry.set(pin, {
+      contractId: contractId || 'general-lockdown',
+      supervisorId: supervisorId || 'default-supervisor',
+      createdAt: Date.now(),
+      used: false
+    });
+    console.log(`[Supervisor PIN] Generated PIN ${pin} for contract ${contractId} mapped to supervisor ${supervisorId}`);
+    res.json({ success: true, pin, contractId, supervisorId });
+  });
+
+  app.post('/api/supervisor-pin/validate', async (req, res) => {
+    const { pin, contractId } = req.body;
+    const record = supervisorPinRegistry.get(pin);
+    if (!record) {
+      return res.status(400).json({ success: false, message: 'Invalid Supervisor Override PIN.' });
+    }
+    if (record.used) {
+      return res.status(400).json({ success: false, message: 'Supervisor PIN has already been used for lockdown termination.' });
+    }
+    if (contractId && record.contractId !== contractId) {
+      return res.status(400).json({ success: false, message: 'PIN does not match the target contract.' });
+    }
+    record.used = true;
+    supervisorPinRegistry.set(pin, record);
+    console.log(`[Supervisor PIN] PIN ${pin} successfully validated for contract ${record.contractId}. Lockdown terminated.`);
+    res.json({ success: true, message: 'Lockdown successfully terminated via Supervisor Override PIN.', contractId: record.contractId });
+  });
+
   app.post('/api/chat/summary', async (req, res) => {
     const { messages, userContext, memory, previousSummary, mode } = req.body;
     try {

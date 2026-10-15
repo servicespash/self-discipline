@@ -84,7 +84,9 @@ export default function RealCalendarIntegration() {
     setItems(items.map(i => {
       if (i.id === id) {
         if (rule) {
-          DisciplineBridge.initiateLockdown(30, 'com.whatsapp,com.instagram.android');
+          const blocked = JSON.parse(localStorage.getItem('sdc_blocked_packages_v1') || '[]');
+          const packages = blocked.length > 0 ? blocked.join(',') : '';
+          DisciplineBridge.initiateLockdown(30, packages);
         }
         return { ...i, linkedRule: rule || undefined };
       }

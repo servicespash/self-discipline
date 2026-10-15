@@ -43,6 +43,15 @@ export const governanceReports = pgTable('governance_reports', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
+export const governanceComments = pgTable('governance_comments', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  contractId: uuid('contract_id').references(() => governanceContracts.id, { onDelete: 'cascade' }),
+  senderUid: text('sender_uid').references(() => users.uid, { onDelete: 'cascade' }).notNull(),
+  senderMoniker: text('sender_moniker').default('Discipline Architect'),
+  commentText: text('comment_text').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
 export const licenses = pgTable('licenses', {
   id: uuid('id').defaultRandom().primaryKey(),
   licenseKey: text('license_key').unique().notNull(),

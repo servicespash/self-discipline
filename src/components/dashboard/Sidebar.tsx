@@ -14,7 +14,8 @@ import {
   ShieldAlert, 
   DollarSign, 
   ShieldCheck,
-  Scale
+  Scale,
+  Mic
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -91,6 +92,26 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileMenuOpen, setIsMobileM
             <NavItem key={item.to} to={item.to} icon={item.icon} label={item.label} onClick={() => setIsMobileMenuOpen(false)} />
           ))}
         </nav>
+      </div>
+
+      {/* Voice Commands Discoverability Trigger */}
+      <div className="px-3 shrink-0">
+        <button
+          type="button"
+          onClick={() => {
+            setIsMobileMenuOpen(false);
+            window.dispatchEvent(new CustomEvent('cymatic-open-voice-commands'));
+          }}
+          className="w-full flex items-center justify-between p-3 rounded-2xl bg-emerald-950/40 hover:bg-emerald-950/70 border border-emerald-500/30 text-emerald-400 hover:text-emerald-300 transition-all cursor-pointer group shadow-sm"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <Mic size={16} className="text-emerald-400 group-hover:scale-110 transition-transform shrink-0" />
+            <span className="font-bold text-xs uppercase tracking-wider truncate">Voice Commands</span>
+          </div>
+          <span className="text-[9px] font-mono font-bold text-emerald-300 bg-emerald-950/90 px-2 py-0.5 rounded-full border border-emerald-500/30 shrink-0">
+            "Hey Rama"
+          </span>
+        </button>
       </div>
 
       <div className="p-3.5 m-3 bg-gray-900/60 border border-gray-800 rounded-2xl space-y-2 shrink-0">
