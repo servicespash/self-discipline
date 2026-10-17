@@ -25,7 +25,7 @@ async function startServer() {
     }
   });
 
-  // Robust multi-model cascading helper to prevent 503 unavailability
+  // Robust multi-model cascading helper to prevent 503 unavailability with Google Search grounding
   async function callGeminiWithFallback(contents: any, systemInstruction: string): Promise<string> {
     const candidateModels = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-flash-latest'];
     let lastError: any = null;
@@ -36,7 +36,8 @@ async function startServer() {
           model,
           contents,
           config: {
-            systemInstruction
+            systemInstruction,
+            tools: [{ googleSearch: {} }]
           }
         });
         if (response && response.text) {

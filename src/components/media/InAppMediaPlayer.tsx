@@ -33,9 +33,7 @@ import {
   Volume2,
   VolumeX,
   Clock,
-  Headphones,
-  Sliders,
-  RotateCcw
+  Headphones
 } from 'lucide-react';
 
 export const InAppMediaPlayer: React.FC = () => {
@@ -76,7 +74,7 @@ export const InAppMediaPlayer: React.FC = () => {
     return () => unsubAmbient();
   }, []);
 
-  // Visualizer Canvas Animation Loop
+  // Visualizer Canvas Animation Loop with High-DPI Scaling & Robust Cleanup
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !isExpanded) return;
@@ -151,6 +149,7 @@ export const InAppMediaPlayer: React.FC = () => {
     return () => {
       if (animFrameRef.current) {
         cancelAnimationFrame(animFrameRef.current);
+        animFrameRef.current = null;
       }
     };
   }, [isExpanded, ambientState.isPlaying, isPlaying, selectedCategory, playerMode, ambientState.volume]);

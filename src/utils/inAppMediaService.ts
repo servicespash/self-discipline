@@ -2,7 +2,7 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  * Cymatic OS Universal Multi-Origin Media Resolver & Ambient Soundscapes Dispatcher
- * Strips human conversational phrasing and queries multiple public media mirrors concurrently.
+ * Strips human conversational phrasing and queries multiple public media mirrors concurrently with MediaSession API integration.
  */
 
 import { AmbientSoundscape, AMBIENT_PRESETS, AmbientSoundscapePresetId } from './ambientSoundscapeEngine';
@@ -43,12 +43,48 @@ class CymaticUniversalMediaEngine {
       platform: 'focus_ambient',
       query: 'binaural_beats'
     };
+    this.setupMediaSessionHandlers();
+  }
+
+  private setupMediaSessionHandlers() {
+    if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
+      try {
+        navigator.mediaSession.setActionHandler('play', () => {
+          this.setPlaying(true);
+        });
+        navigator.mediaSession.setActionHandler('pause', () => {
+          this.setPlaying(false);
+        });
+        navigator.mediaSession.setActionHandler('stop', () => {
+          this.close();
+        });
+      } catch (e) {
+        console.warn('[InAppMediaService] MediaSession action handler setup error:', e);
+      }
+    }
+  }
+
+  private updateMediaSessionMetadata() {
+    if (typeof navigator !== 'undefined' && 'mediaSession' in navigator && this.currentTrack) {
+      try {
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: this.currentTrack.title,
+          artist: this.currentTrack.artist || 'Cymatic Discipline OS',
+          album: 'Deep Work & Spiritual Focus'
+        });
+      } catch (e) {
+        console.warn('[InAppMediaService] MediaSession metadata update error:', e);
+      }
+    }
   }
 
   public indexLocalFiles(files: FileList | File[]) {
+    if (!files) return;
     Array.from(files).forEach(file => {
-      const cleanName = file.name.toLowerCase().replace(/\.[^/.]+$/, '');
-      this.localFilesIndex.set(cleanName, file);
+      if (file && file.name) {
+        const cleanName = file.name.toLowerCase().replace(/\.[^/.]+$/, '');
+        this.localFilesIndex.set(cleanName, file);
+      }
     });
   }
 
@@ -61,24 +97,34 @@ class CymaticUniversalMediaEngine {
   }
 
   private notify() {
-    this.listeners.forEach(cb => cb(this.currentTrack, this.isPlaying, this.isVisible, this.activeMode));
+    this.updateMediaSessionMetadata();
+    this.listeners.forEach(cb => {
+      try {
+        cb(this.currentTrack, this.isPlaying, this.isVisible, this.activeMode);
+      } catch (e) {
+        console.error('[InAppMediaService] Listener callback error:', e);
+      }
+    });
   }
 
   public setMode(mode: 'ambient' | 'media') {
-    this.activeMode = mode;
-    this.notify();
+    if (this.activeMode !== mode) {
+      this.activeMode = mode;
+      this.notify();
+    }
   }
 
   public getMode(): 'ambient' | 'media' {
     return this.activeMode;
   }
 
-  /**
-   * Launch ambient soundscape directly
-   */
   public playAmbient(presetId: AmbientSoundscapePresetId = 'binaural_alpha') {
     const preset = AMBIENT_PRESETS[presetId] || AMBIENT_PRESETS.binaural_alpha;
-    AmbientSoundscape.playPreset(preset.id);
+    try {
+      AmbientSoundscape.playPreset(preset.id);
+    } catch (e) {
+      console.warn('[InAppMediaService] AmbientSoundscape playPreset error:', e);
+    }
 
     this.activeMode = 'ambient';
     this.currentTrack = {
@@ -94,10 +140,8 @@ class CymaticUniversalMediaEngine {
     this.notify();
   }
 
-  /**
-   * Advanced Multi-Language Intent Stripper
-   */
   public extractCleanSearchTerms(rawQuery: string): string {
+    if (!rawQuery || typeof rawQuery !== 'string') return '';
     return rawQuery
       .replace(/^(can\s+you\s+)?(please\s+)?(play\s+for\s+me|play\s+me|play|stream\s+me|stream|listen\s+to|find\s+me|search\s+for|get\s+me|nkubira)\s+/i, '')
       .replace(/\b(for me|for us|right now)\b/gi, '')
@@ -105,14 +149,11 @@ class CymaticUniversalMediaEngine {
       .trim();
   }
 
-  /**
-   * Main Dispatcher Pipeline with Absolute Multi-Platform Access
-   */
   public async dispatchMedia(query: string, platform: StreamingPlatform = 'universal_stream') {
     const cleaned = this.extractCleanSearchTerms(query);
+    if (!cleaned) return;
     const lower = cleaned.toLowerCase();
 
-    // 1. Ambient Soundscapes Check
     if (lower.includes('white noise') || lower.includes('pink noise') || lower.includes('brown noise')) {
       const preset: AmbientSoundscapePresetId = lower.includes('brown') ? 'brown_cabin' : lower.includes('pink') ? 'pink_rain' : 'white_crisp';
       this.playAmbient(preset);
@@ -131,11 +172,11 @@ class CymaticUniversalMediaEngine {
       return;
     }
 
-    // Stop ambient sound if switching to music
-    AmbientSoundscape.pause();
+    try {
+      AmbientSoundscape.pause();
+    } catch {}
     this.activeMode = 'media';
 
-    // 2. Spiritual Call Check
     if (lower.includes('adhan') || lower.includes('azan')) {
       this.currentTrack = {
         id: `adhan_${Date.now()}`,
@@ -151,7 +192,6 @@ class CymaticUniversalMediaEngine {
       return;
     }
 
-    // 3. Local Device File Search (Matches exact title, artist, or file name)
     for (const [fileName, file] of this.localFilesIndex.entries()) {
       if (fileName.includes(lower) || lower.includes(fileName)) {
         this.playLocalAudioFile(file);
@@ -159,7 +199,6 @@ class CymaticUniversalMediaEngine {
       }
     }
 
-    // 4. Multi-Mirror Concurrent Public Network Resolution across YouTube, Spotify, Deezer & Universal Stream mirrors
     const audioStreamUrl = await this.resolveAudioFromPublicMirrors(cleaned);
 
     this.currentTrack = {
@@ -176,9 +215,6 @@ class CymaticUniversalMediaEngine {
     this.notify();
   }
 
-  /**
-   * Queries public open audio indexes in parallel and returns the fastest responding MP3/Audio stream URL
-   */
   private async resolveAudioFromPublicMirrors(searchQuery: string): Promise<string> {
     if (searchQuery.startsWith('http://') || searchQuery.startsWith('https://')) {
       return searchQuery;
@@ -186,11 +222,10 @@ class CymaticUniversalMediaEngine {
 
     const encodeQ = encodeURIComponent(searchQuery);
 
-    for (const baseUrl of PUBLIC_AUDIO_MIRRORS) {
+    const mirrorPromises = PUBLIC_AUDIO_MIRRORS.map(async (baseUrl) => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3500);
       try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2500);
-
         const res = await fetch(`${baseUrl}/search?q=${encodeQ}&filter=music_songs`, {
           signal: controller.signal
         });
@@ -199,23 +234,37 @@ class CymaticUniversalMediaEngine {
         if (res.ok) {
           const data = await res.json();
           const items = data.items || data;
-          if (items && items.length > 0) {
+          if (Array.isArray(items) && items.length > 0) {
             const videoId = items[0].url ? items[0].url.split('v=')[1] : items[0].videoId;
             if (videoId) {
               return `${baseUrl}/streams/${videoId}`;
             }
           }
         }
-      } catch (err) {
-        continue;
+      } catch {
+        // Fallback to next mirror
       }
+      return null;
+    });
+
+    try {
+      const results = await Promise.allSettled(mirrorPromises);
+      for (const result of results) {
+        if (result.status === 'fulfilled' && result.value) {
+          return result.value;
+        }
+      }
+    } catch (e) {
+      console.warn('[InAppMediaService] Mirror resolution error:', e);
     }
 
     return '/audio/adhan.mp3';
   }
 
   public playLocalAudioFile(file: File) {
-    AmbientSoundscape.pause();
+    try {
+      AmbientSoundscape.pause();
+    } catch {}
     this.activeMode = 'media';
     const blobUrl = URL.createObjectURL(file);
     const title = file.name.replace(/\.[^/.]+$/, '');
@@ -235,20 +284,26 @@ class CymaticUniversalMediaEngine {
   }
 
   public setPlaying(playing: boolean) {
-    this.isPlaying = playing;
-    if (this.currentTrack?.platform === 'focus_ambient') {
-      if (playing) {
-        AmbientSoundscape.togglePlay();
-      } else {
-        AmbientSoundscape.pause();
+    if (this.isPlaying !== playing) {
+      this.isPlaying = playing;
+      if (this.currentTrack?.platform === 'focus_ambient') {
+        try {
+          if (playing) {
+            AmbientSoundscape.togglePlay();
+          } else {
+            AmbientSoundscape.pause();
+          }
+        } catch {}
       }
+      this.notify();
     }
-    this.notify();
   }
 
   public setVisible(visible: boolean) {
-    this.isVisible = visible;
-    this.notify();
+    if (this.isVisible !== visible) {
+      this.isVisible = visible;
+      this.notify();
+    }
   }
 
   public open(mode: 'ambient' | 'media' = 'ambient') {
@@ -260,7 +315,9 @@ class CymaticUniversalMediaEngine {
   public close() {
     this.isPlaying = false;
     this.isVisible = false;
-    AmbientSoundscape.pause();
+    try {
+      AmbientSoundscape.pause();
+    } catch {}
     this.notify();
   }
 

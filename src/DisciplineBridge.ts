@@ -48,13 +48,17 @@ class DisciplineBridgeEngine {
   constructor() {
     this.loadPersistedState();
     if (typeof window !== 'undefined' && window.BroadcastChannel) {
-      this.broadcastChannel = new BroadcastChannel('sdc_discipline_event_bus');
-      this.broadcastChannel.onmessage = (event: MessageEvent) => {
-        if (event.data && typeof event.data === 'object') {
-          this.lockdownState = event.data as SystemLockdownPayload;
-          this.emit('lockdownChange', this.lockdownState);
-        }
-      };
+      try {
+        this.broadcastChannel = new BroadcastChannel('sdc_discipline_event_bus');
+        this.broadcastChannel.onmessage = (event: MessageEvent) => {
+          if (event.data && typeof event.data === 'object') {
+            this.lockdownState = event.data as SystemLockdownPayload;
+            this.emit('lockdownChange', this.lockdownState);
+          }
+        };
+      } catch (e) {
+        console.warn('[DisciplineBridge] BroadcastChannel unavailable:', e);
+      }
     }
   }
 
@@ -64,7 +68,9 @@ class DisciplineBridgeEngine {
   }
 
   public on(event: 'lockdownChange', listener: (payload: SystemLockdownPayload) => void): void {
-    this.events[event].push(listener);
+    if (this.events[event]) {
+      this.events[event].push(listener);
+    }
   }
 
   private loadPersistedState(): void {
@@ -72,7 +78,7 @@ class DisciplineBridgeEngine {
       const saved = localStorage.getItem('sdc_discipline_engine_v3');
       if (saved) {
         const parsed: SystemLockdownPayload = JSON.parse(saved);
-        if (parsed.active && parsed.endTime > Date.now()) {
+        if (parsed && parsed.active && typeof parsed.endTime === 'number' && parsed.endTime > Date.now()) {
           this.lockdownState = parsed;
           this.dispatchNativeInterception(true);
         } else {
@@ -85,11 +91,21 @@ class DisciplineBridgeEngine {
   }
 
   public off(event: 'lockdownChange', listener: (payload: SystemLockdownPayload) => void): void {
-    this.events[event] = this.events[event].filter(l => l !== listener);
+    if (this.events[event]) {
+      this.events[event] = this.events[event].filter(l => l !== listener);
+    }
   }
 
   private emit(event: 'lockdownChange', payload: SystemLockdownPayload): void {
-    this.events[event].forEach(listener => listener(payload));
+    if (this.events[event]) {
+      this.events[event].forEach(listener => {
+        try {
+          listener(payload);
+        } catch (e) {
+          console.error('[DisciplineBridge] Listener error:', e);
+        }
+      });
+    }
   }
 
   private saveState(): void {
@@ -123,12 +139,18 @@ class DisciplineBridgeEngine {
   }
 
   public async isSocialMediaPackage(packageId: string): Promise<boolean> {
-    const apps = await PackageManager.fetchAllApps();
-    const app = apps.find(a => a.packageName === packageId);
-    return app ? app.category === 'social' || app.category === 'messaging' : false;
+    if (!packageId) return false;
+    try {
+      const apps = await PackageManager.fetchAllApps();
+      const app = apps.find(a => a.packageName === packageId);
+      return app ? app.category === 'social' || app.category === 'messaging' : false;
+    } catch {
+      return false;
+    }
   }
 
   public isValidPackageName(packageName: string): boolean {
+    if (!packageName || typeof packageName !== 'string') return false;
     const pkgRegex = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/i;
     return pkgRegex.test(packageName);
   }
@@ -239,8 +261,12 @@ class DisciplineBridgeEngine {
     this.saveState();
     
     if (typeof window !== 'undefined' && window.Capacitor?.isPluginAvailable('DisciplineNative')) {
-      const plugin = window.Capacitor.Plugins.DisciplineNative;
-      await plugin.startVpnTunnel();
+      try {
+        const plugin = window.Capacitor.Plugins.DisciplineNative;
+        await plugin.startVpnTunnel();
+      } catch (e) {
+        console.warn('[DisciplineBridge] VPN tunnel start error:', e);
+      }
     }
     
     return this.lockdownState;
@@ -360,7 +386,6 @@ class DisciplineBridgeEngine {
   }
 
   public isMicrophoneAllowed(): boolean {
-    // Check lockdown or other constraints
     return !this.lockdownState.active;
   }
 

@@ -238,8 +238,9 @@ class RamaVoiceEngine {
   public speak(text: string) {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
 
+    const cleanText = text.replace(/[*_#`[\]()]/g, '').trim();
     window.speechSynthesis.cancel(); // Cancel ongoing speech
-    const utterance = new SpeechSynthesisUtterance(text);
+    const utterance = new SpeechSynthesisUtterance(cleanText);
     utterance.rate = 1.0;
     utterance.pitch = 1.0;
 
