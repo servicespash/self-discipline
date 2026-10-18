@@ -1140,10 +1140,9 @@ export default function RamaFloatingHub({ context = '', session, onClose, initia
                         <MessageActions
                           message={msg}
                           onReferenceInNewChat={(m) => {
-                            const fresh = ConversationManager.createNewSession(userMoniker);
-                            const next = [fresh, ...sessions];
+                            const { sessions: next, newSession } = ConversationManager.createNewSession(userMoniker, sessions);
                             setSessions(next);
-                            setActiveSessionId(fresh.id);
+                            setActiveSessionId(newSession.id);
                             setInput(`Regarding your earlier reply: "${m.text.slice(0, 280)}"\n\n`);
                           }}
                           onDelete={(m) => {
