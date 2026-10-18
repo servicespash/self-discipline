@@ -6,6 +6,8 @@
  * Debounces speech recognition lifecycle to prevent rapid mic flickering.
  */
 
+import { detectWakeWord, type WakeTarget } from './wakeVocabulary';
+
 export interface RamaVoiceState {
   isListening: boolean;
   isSpeaking: boolean;
@@ -23,9 +25,8 @@ class RamaVoiceEngine {
   private transcript: string = '';
   private stateListeners: Set<(state: RamaVoiceState) => void> = new Set();
   private commandListeners: Set<(command: string) => void> = new Set();
-  private wakeWordListeners: Set<(wakeWord: string) => void> = new Set();
+  private wakeWordListeners: Set<(wakeWord: string, target: WakeTarget) => void> = new Set();
 
-  private wakeWords: string[] = ['hey rama', 'hi rama', 'hey discipline', 'rama'];
 
   constructor() {
     this.initSpeechRecognition();
@@ -199,7 +200,7 @@ class RamaVoiceEngine {
     };
   }
 
-  public onWakeWord(listener: (wakeWord: string) => void): () => void {
+  public onWakeWord(listener: (wakeWord: string, target: WakeTarget) => void): () => void {
     this.wakeWordListeners.add(listener);
     return () => {
       this.wakeWordListeners.delete(listener);
@@ -215,8 +216,8 @@ class RamaVoiceEngine {
     this.commandListeners.forEach(fn => fn(cmd));
   }
 
-  private notifyWakeWord(kw: string) {
-    this.wakeWordListeners.forEach(fn => fn(kw));
+  private notifyWakeWord(kw: string, target: WakeTarget) {
+    this.wakeWordListeners.forEach(fn => fn(kw, target));
   }
 }
 
