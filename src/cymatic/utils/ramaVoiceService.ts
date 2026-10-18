@@ -68,17 +68,12 @@ class RamaVoiceEngine {
       this.transcript = fullText;
       this.notifyState();
 
-      // Check Wake Word Detection
-      const lower = fullText.toLowerCase();
-      for (const kw of this.wakeWords) {
-        if (lower.includes(kw)) {
-          this.notifyWakeWord(kw);
-          const cleanCommand = lower.replace(kw, '').trim();
-          if (cleanCommand.length > 2) {
-            this.notifyCommand(cleanCommand);
-          }
-          break;
-        }
+      // Unified wake-word detection (final results only, to avoid double-firing on interim text)
+      if (!finalTranscript) return;
+      const match = detectWakeWord(finalTranscript);
+      if (match) {
+        this.notifyWakeWord(match.phrase, match.target);
+        if (match.command.length > 2) this.notifyCommand(match.command);
       }
     };
 
