@@ -33,7 +33,8 @@ const AppContent: React.FC = () => {
   const [inputMoniker, setInputMoniker] = useState('');
   const [lockdownState, setLockdownState] = useState<SystemLockdownPayload>(() => DisciplineBridge.getState());
   const [bridgeReady, setBridgeReady] = useState(false);
-  const [isHubVisible, setIsHubVisible] = useState(true);
+  const [isHubVisible, setIsHubVisible] = useState(false);
+  const [hubMode, setHubMode] = useState<'window' | 'assistant'>('assistant');
   const [legalModalTab, setLegalModalTab] = useState<LegalTabType | null>(null);
   const [referralInvite, setReferralInvite] = useState<ReferralResolution | null>(null);
 
@@ -91,9 +92,19 @@ const AppContent: React.FC = () => {
     // Auto-start continuous background listening for wake words
     RamaVoice.startContinuousListening();
 
-    const handleWakeWordEvent = () => setIsHubVisible(true);
-    const unsubWakeWord = RamaVoice.onWakeWord(() => {
-      setIsHubVisible(true);
+    const handleWakeWordEvent = () => { setHubMode('assistant'); setIsHubVisible(true); };
+    // "Hey Rama" -> floating sheet over the current screen.
+    // "Hey/Open Discipline" -> bring the full app forward on the dashboard.
+    const unsubWakeWord = RamaVoice.onWakeWord((_phrase, target) => {
+      if (target === 'app') {
+        setIsHubVisible(false);
+        if (!window.location.hash.startsWith('#/dashboard')) window.location.hash = '#/dashboard';
+        window.Capacitor?.Plugins?.DisciplineNative?.bringToFront?.().catch?.(() => {});
+        window.focus();
+      } else {
+        setHubMode('assistant');
+        setIsHubVisible(true);
+      }
     });
     window.addEventListener('rama-wake-word', handleWakeWordEvent);
     window.addEventListener('rama-activate-hub', handleWakeWordEvent);
@@ -184,11 +195,12 @@ const AppContent: React.FC = () => {
         <RamaFloatingHub 
           context="Cymatic Discipline OS Universal Shell" 
           session={session}
+          initialMode={hubMode}
           onClose={() => setIsHubVisible(false)} 
         />
       ) : (
         <button
-          onClick={() => setIsHubVisible(true)}
+          onClick={() => { setHubMode('window'); setIsHubVisible(true); }}
           className="fixed bottom-6 right-6 z-[120] p-4 bg-gray-900/90 hover:bg-gray-800 backdrop-blur-xl border border-emerald-500/40 rounded-full text-emerald-400 shadow-2xl transition-all duration-200 hover:scale-105 active:scale-95 flex items-center justify-center gap-2 group"
           title="Summon Rama AI Hub"
         >

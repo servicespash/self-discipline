@@ -16,6 +16,7 @@
  * - Privacy-centric encrypted local memory vault & conversation history
  */
 
+import MessageActions from './rama/MessageActions';
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   BotMessageSquare,
@@ -85,7 +86,7 @@ interface RamaProps {
 
 const MEMORY_STORAGE_KEY = 'cymatic_rama_memory_v1';
 
-export default function RamaFloatingHub({ context = '', session, onClose }: RamaProps) {
+export default function RamaFloatingHub({ context = '', session, onClose, initialMode = 'window' }: RamaProps & { initialMode?: 'window' | 'assistant' }) {
   const nodeRef = useRef<HTMLDivElement>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -103,7 +104,7 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
   }, [session]);
 
   // Window states: mode can be 'window' (full card) or 'assistant' (Gemini-style Mini HUD)
-  const [displayMode, setDisplayMode] = useState<'window' | 'assistant'>('window');
+  const [displayMode, setDisplayMode] = useState<'window' | 'assistant'>(initialMode);
   const [isOpen, setIsOpen] = useState(true);
   const [isMinimized, setIsMinimized] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -215,7 +216,8 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
       handleSendMessage(command);
     });
 
-    const unsubWakeWord = (wakeWord: string) => {
+    const unsubWakeWord = (wakeWord: string, target: string) => {
+      if (target === 'app') return; // App shell handles full-app wake
       setIsOpen(true);
       setIsMinimized(false);
       setDisplayMode('assistant');
@@ -682,7 +684,7 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
      ========================================================================= */
   if (displayMode === 'assistant') {
     return (
-      <div className="fixed bottom-4 right-4 sm:right-6 z-[150] w-[95vw] max-w-md animate-in slide-in-from-bottom-6 duration-200">
+      <div className="fixed inset-x-0 bottom-0 z-[150] w-full sm:max-w-xl sm:mx-auto px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] animate-in slide-in-from-bottom-6 duration-200">
         {/* Hidden File Inputs */}
         <input 
           type="file" 
@@ -912,7 +914,7 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
   return (
     <div
       ref={nodeRef}
-      className="fixed bottom-4 right-4 z-[120] w-[95vw] sm:w-[500px] md:w-[540px] max-h-[85vh] flex flex-col bg-gray-950/95 border border-gray-800 rounded-3xl shadow-2xl backdrop-blur-2xl ring-1 ring-emerald-500/20 overflow-hidden"
+      className={`fixed z-[120] flex flex-col bg-gray-950 overflow-hidden ${isMinimized ? 'bottom-4 right-4 w-[95vw] sm:w-[420px] rounded-3xl border border-gray-800 shadow-2xl' : 'inset-0 w-full h-[100dvh]'}`}
     >
       {/* Hidden File Inputs */}
       <input 
@@ -1134,6 +1136,22 @@ export default function RamaFloatingHub({ context = '', session, onClose }: Rama
                       >
                         <div className="whitespace-pre-wrap">{msg.text}</div>
                       </div>
+                      {msg.role === 'assistant' && (
+                        <MessageActions
+                          message={msg}
+                          onReferenceInNewChat={(m) => {
+                            const fresh = ConversationManager.createNewSession(userMoniker);
+                            const next = [fresh, ...sessions];
+                            setSessions(next);
+                            setActiveSessionId(fresh.id);
+                            setInput(`Regarding your earlier reply: "${m.text.slice(0, 280)}"\n\n`);
+                          }}
+                          onDelete={(m) => {
+                            setSessions(ConversationManager.updateSessionMessages(activeSessionId, messages.filter((x) => x.id !== m.id), sessions));
+                          }}
+                          onNotify={showToast}
+                        />
+                      )}
                       <span className="text-[9px] font-mono text-gray-500 mt-0.5 px-1">
                         {msg.timestamp}
                       </span>
