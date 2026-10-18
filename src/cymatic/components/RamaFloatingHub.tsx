@@ -1151,9 +1151,11 @@ export default function RamaFloatingHub({ context = '', session, onClose, initia
                           onNotify={showToast}
                         />
                       )}
-                      <span className="text-[9px] font-mono text-gray-500 mt-0.5 px-1">
-                        {msg.timestamp}
-                      </span>
+                      {msg.role === 'user' && (
+                        <span className="text-[9px] font-mono text-gray-500 mt-0.5 px-1">
+                          {msg.timestamp}
+                        </span>
+                      )}
                     </div>
                   ))
                 )}
