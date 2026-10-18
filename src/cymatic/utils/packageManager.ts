@@ -124,7 +124,7 @@ export class PackageManager {
     if (typeof window !== 'undefined' && window.Capacitor?.isPluginAvailable('DisciplineNative')) {
       try {
         const nativeResult = await window.Capacitor.Plugins.DisciplineNative.fetchInstalledApps();
-        const parsed = typeof nativeResult === 'string' ? JSON.parse(nativeResult) : nativeResult;
+        const parsed = typeof nativeResult === 'string' ? JSON.parse(nativeResult) : (nativeResult?.apps ?? nativeResult);
         if (Array.isArray(parsed) && parsed.length > 0) {
           return parsed.map((app: any) => ({
             packageName: app.packageName || app.id,
