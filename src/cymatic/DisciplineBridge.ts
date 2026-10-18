@@ -246,7 +246,10 @@ class DisciplineBridgeEngine {
   public async checkPermissions(): Promise<boolean> {
     if (typeof window !== 'undefined' && window.Capacitor?.isPluginAvailable('DisciplineNative')) {
       try {
-        return await window.Capacitor.Plugins.DisciplineNative.checkPermissions();
+        const res = await window.Capacitor.Plugins.DisciplineNative.checkPermissions();
+        // Native returns per-permission status; the app may still start while some are missing.
+        (this as any).nativePermissions = res;
+        return true;
       } catch (e) {
         console.error('[DisciplineBridge] Native permission check failed:', e);
       }
@@ -326,7 +329,7 @@ class DisciplineBridgeEngine {
     if (typeof window !== 'undefined' && window.Capacitor?.isPluginAvailable('DisciplineNative')) {
       try {
         const result = await window.Capacitor.Plugins.DisciplineNative.fetchInstalledApps();
-        const rawApps = JSON.parse(result) as Array<{ packageName?: string; name?: string }>;
+        const rawApps = (typeof result === 'string' ? JSON.parse(result) : result?.apps || []) as Array<{ packageName?: string; name?: string }>;
         const parsed = rawApps.map((app) => {
           const pkgName = app.packageName || '';
           const scoring = this.categorizePackageName(pkgName);

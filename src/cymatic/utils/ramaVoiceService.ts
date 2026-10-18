@@ -6,6 +6,8 @@
  * Debounces speech recognition lifecycle to prevent rapid mic flickering.
  */
 
+import { detectWakeWord, type WakeTarget } from './wakeVocabulary';
+
 export interface RamaVoiceState {
   isListening: boolean;
   isSpeaking: boolean;
@@ -23,9 +25,8 @@ class RamaVoiceEngine {
   private transcript: string = '';
   private stateListeners: Set<(state: RamaVoiceState) => void> = new Set();
   private commandListeners: Set<(command: string) => void> = new Set();
-  private wakeWordListeners: Set<(wakeWord: string) => void> = new Set();
+  private wakeWordListeners: Set<(wakeWord: string, target: WakeTarget) => void> = new Set();
 
-  private wakeWords: string[] = ['hey rama', 'hi rama', 'hey discipline', 'rama'];
 
   constructor() {
     this.initSpeechRecognition();
@@ -68,17 +69,12 @@ class RamaVoiceEngine {
       this.transcript = fullText;
       this.notifyState();
 
-      // Check Wake Word Detection
-      const lower = fullText.toLowerCase();
-      for (const kw of this.wakeWords) {
-        if (lower.includes(kw)) {
-          this.notifyWakeWord(kw);
-          const cleanCommand = lower.replace(kw, '').trim();
-          if (cleanCommand.length > 2) {
-            this.notifyCommand(cleanCommand);
-          }
-          break;
-        }
+      // Unified wake-word detection (final results only, to avoid double-firing on interim text)
+      if (!finalTranscript) return;
+      const match = detectWakeWord(finalTranscript);
+      if (match) {
+        this.notifyWakeWord(match.phrase, match.target);
+        if (match.command.length > 2) this.notifyCommand(match.command);
       }
     };
 
@@ -204,7 +200,7 @@ class RamaVoiceEngine {
     };
   }
 
-  public onWakeWord(listener: (wakeWord: string) => void): () => void {
+  public onWakeWord(listener: (wakeWord: string, target: WakeTarget) => void): () => void {
     this.wakeWordListeners.add(listener);
     return () => {
       this.wakeWordListeners.delete(listener);
@@ -220,8 +216,8 @@ class RamaVoiceEngine {
     this.commandListeners.forEach(fn => fn(cmd));
   }
 
-  private notifyWakeWord(kw: string) {
-    this.wakeWordListeners.forEach(fn => fn(kw));
+  private notifyWakeWord(kw: string, target: WakeTarget) {
+    this.wakeWordListeners.forEach(fn => fn(kw, target));
   }
 }
 
