@@ -46,6 +46,22 @@ export default function FocusVpnManager() {
 
   const state = DisciplineBridge.getState();
 
+  const native = typeof window !== 'undefined' && window.Capacitor?.isPluginAvailable?.('DisciplineNative')
+    ? window.Capacitor.Plugins.DisciplineNative : null;
+  const [perms, setPerms] = useState<Record<string, boolean> | null>(null);
+  const refreshPerms = () => native?.checkPermissions().then(setPerms).catch(() => setPerms(null));
+  useEffect(() => {
+    refreshPerms();
+    const onFocus = () => refreshPerms();
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => { window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onFocus); };
+  }, []);
+  const askPerm = async (permission: string) => {
+    try { await native?.requestPermission({ permission }); } catch (e) { setPinError(String(e?.message || e)); }
+    refreshPerms();
+  };
+
   useEffect(() => {
     setIsLocked(state.active);
     const unsubscribe = DisciplineBridge.subscribe((payload) => {
@@ -84,8 +100,13 @@ export default function FocusVpnManager() {
 
   const handleStartLockdown = async () => {
     const blockedCsv = apps.filter(a => a.blocked).map(a => a.id).join(',');
-    await DisciplineBridge.initiateLockdown(duration, blockedCsv);
-    setIsLocked(true);
+    try {
+      await DisciplineBridge.initiateLockdown(duration, blockedCsv);
+      setIsLocked(true);
+    } catch (e) {
+      setPinError('Lockdown could not fully start: ' + (e?.message || e));
+    }
+    refreshPerms();
   };
 
   const handleSupervisorUnlock = () => {
@@ -140,6 +161,18 @@ export default function FocusVpnManager() {
           </div>
         )}
       </div>
+
+      {native && perms && (
+        <div className="p-4 bg-gray-900/90 border border-gray-800 rounded-3xl flex flex-wrap gap-2 items-center">
+          <span className="text-[10px] font-black uppercase text-gray-400 mr-2">Phone permissions</span>
+          {[['accessibility','Close blocked apps'],['notificationListener','Silence notifications'],['vpn','Block app internet']].map(([k,label]) => (
+            <button key={k} type="button" onClick={() => askPerm(k)} disabled={perms[k]}
+              className={`px-3 py-1.5 rounded-xl text-[11px] font-bold border ${perms[k] ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300' : 'bg-amber-950/40 border-amber-500/40 text-amber-300'}`}>
+              {perms[k] ? '✓ ' : 'Allow: '}{label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Grid Configuration */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
