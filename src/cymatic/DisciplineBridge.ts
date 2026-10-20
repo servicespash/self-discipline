@@ -120,7 +120,7 @@ class DisciplineBridgeEngine {
         const plugin = window.Capacitor.Plugins.DisciplineNative;
         if (active) {
           await plugin.suppressNotifications({ suppress: true });
-          await plugin.enforceIntentInterception({ active: true, packages: this.lockdownState.restrictedPackages });
+          await plugin.enforceIntentInterception({ active: true, packages: this.lockdownState.restrictedPackages, endTime: this.lockdownState.endTime });
         } else {
           await plugin.suppressNotifications({ suppress: false });
           await plugin.enforceIntentInterception({ active: false });
@@ -237,7 +237,13 @@ class DisciplineBridgeEngine {
     
     if (typeof window !== 'undefined' && window.Capacitor?.isPluginAvailable('DisciplineNative')) {
       const plugin = window.Capacitor.Plugins.DisciplineNative;
-      await plugin.startVpnTunnel();
+      try {
+        await plugin.startVpnTunnel();
+      } catch (e) {
+        // Ask for the VPN once, then retry; surface the failure instead of hiding it.
+        await plugin.requestPermission({ permission: 'vpn' });
+        await plugin.startVpnTunnel();
+      }
     }
     
     return this.lockdownState;
