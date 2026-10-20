@@ -4,4 +4,5 @@
     <string name="title_activity_main">Cymatic Discipline OS</string>
     <string name="package_name">app.lovable.cymaticdiscipline</string>
     <string name="custom_url_scheme">app.lovable.cymaticdiscipline</string>
+    <string name="accessibility_description">Lets Cymatic close apps you chose to block during a focus lockdown. It reads only which app is opening, never screen content.</string>
 </resources>

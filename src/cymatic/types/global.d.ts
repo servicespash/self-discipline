@@ -10,9 +10,11 @@ export {};
 export interface DisciplineNativePlugin {
   terminateLockdown: () => Promise<void>;
   suppressNotifications: (options: { suppress: boolean }) => Promise<void>;
-  enforceIntentInterception: (options: { active: boolean; packages?: string[] }) => Promise<void>;
+  enforceIntentInterception: (options: { active: boolean; packages?: string[]; endTime?: number }) => Promise<void>;
   startVpnTunnel: () => Promise<void>;
-  checkPermissions: () => Promise<boolean>;
+  checkPermissions: () => Promise<any>;
+  requestPermission: (options: { permission: "accessibility" | "notificationListener" | "vpn" | "overlay" }) => Promise<any>;
+  bringToFront?: () => Promise<void>;
   fetchInstalledApps: () => Promise<string>;
 }
 
