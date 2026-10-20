@@ -3,7 +3,7 @@
   "appName": "Cymatic Discipline OS",
   "webDir": "public",
   "server": {
-    "url": "https://id-preview--8f9dbc6e-2704-43e6-a8f3-b11b61fc08fe.lovable.app",
+    "url": "https://discipline.cymatichub.xyz",
     "cleartext": false
   }
 }
