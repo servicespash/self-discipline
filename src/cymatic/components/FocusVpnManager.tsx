@@ -171,6 +171,7 @@ export default function FocusVpnManager() {
               {perms[k] ? '✓ ' : 'Allow: '}{label}
             </button>
           ))}
+          {!isLocked && pinError && <p className="w-full text-[11px] text-red-400 font-mono">{pinError}</p>}
         </div>
       )}
 
